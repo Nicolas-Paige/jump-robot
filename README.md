@@ -51,7 +51,7 @@ npx http-server -p 8000
 | `Shift` | 冲刺（移动速度提升，跳跃力增强） |
 | `Space` | 跳跃 |
 | 鼠标移动 | 转动视角（点击页面锁定鼠标） |
-| `ESC` | 打开 / 关闭暂停菜单 |
+| `ESC` / `P` | 打开 / 关闭暂停菜单 |
 
 **玩法要点**：冲刺时跳跃能跳得更高更远，是登上高层的核心技巧。掉出平台边缘会被拉回第 0 层中心继续游戏；但底部岩浆会持续上升，一旦脚底低于岩浆面即判定死亡，弹出菜单等待选择。因此要尽量保持向上，别被岩浆追上。
 
@@ -59,10 +59,12 @@ npx http-server -p 8000
 
 底部有一片缓慢上升的岩浆面，是主要的失败条件。
 
-- **视觉**：基于 `ShaderMaterial` 的 fBm 分形噪声驱动流动纹理，配合温度色映射（暗红 → 橙 → 亮黄）模拟沸腾发光与冷区硬壳；岩浆发出的红色点光源会照亮附近平台与角色，起到逼近预警作用
+- **Shader**：使用 Three.js 官方 `webgl_shader_lava` shader（由 TheGameMaker 出品，随官方 examples 长期维护）
+- **纹理**：通过 CDN 加载官方 lava 纹理（`textures/lava/cloud.png` 噪声图 + `textures/lava/lavatile.jpg` 熔岩贴图），配合 `uvScale` 在大平面上平铺
+- **流动**：纹理 UV 基于时间与 cloud 噪声做双路偏移（T1 / T2），再通过 `color * (p*2) + (color² - 0.1)` 混合，通道溢出形成高温发光带
+- **红光预警**：岩浆点光源会照亮附近平台与角色，岩浆逼近时视觉更紧张
 - **行为**：岩浆面以恒定速度向上推进，玩家脚底低于岩浆面时触发死亡
 - **死亡流程**：角色消失约 1 秒（被烧化）→ 弹出"你死了"菜单 → 玩家选择"重新开始"（回到起点、岩浆归位、保留最高层数）或"退出游戏"（回开始界面、暂停音乐）
-- **参考**：岩浆着色器参考自 [Three.js 熔岩流动效果](https://threelab.cn/articles/threejs-lava-flow)
 
 ## 项目结构
 
@@ -87,7 +89,7 @@ jump-robot/
 - ES Modules
 - WebGLRenderer + PCFSoftShadowMap
 - GLTFLoader 加载角色模型与动画
-- ShaderMaterial 自定义岩浆着色器（fBm 噪声 + 温度色映射）
+- ShaderMaterial 应用 Three.js 官方 `webgl_shader_lava` shader（含 cloud / lavatile 纹理）
 - HTML5 `<audio>` 背景音乐播放
 
 ## 关键参数
@@ -111,6 +113,8 @@ jump-robot/
 | `LAVA_INITIAL_Y` | `-8` | 岩浆起始高度（低于第 0 层） |
 | `LAVA_DEATH_MARGIN` | `0.1` | 玩家脚底低于岩浆面多少即判定死亡 |
 | `DEATH_DURATION` | `1.0` | 死亡动画时长（秒） |
+| `LAVA_UV_SCALE` | `(10, 10)` | 官方 lava 纹理在平面上的平铺密度 |
+| `LAVA_TIME_SCALE` | `1.0` | 官方 lava shader 流动速度整体缩放 |
 
 ## 许可证
 
