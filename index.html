@@ -166,6 +166,79 @@
             box-shadow: 0 6px 20px rgba(238, 90, 111, 0.4);
         }
 
+        #btnSettings {
+            background: linear-gradient(135deg, #718096, #4a5568);
+        }
+
+        #btnSettings:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(113, 128, 150, 0.4);
+        }
+
+        /* 设置面板（覆盖在 ESC 菜单上） */
+        #settingsPanel {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.85);
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            backdrop-filter: blur(8px);
+        }
+
+        #settingsPanel h2 {
+            color: #fff;
+            font-size: 32px;
+            margin-bottom: 30px;
+        }
+
+        .setting-row {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            margin-bottom: 24px;
+            color: #ddd;
+            font-size: 18px;
+        }
+
+        .setting-row label {
+            min-width: 80px;
+            text-align: right;
+        }
+
+        .setting-row input[type="range"] {
+            width: 200px;
+            accent-color: #4a90e2;
+            cursor: pointer;
+        }
+
+        .setting-row .vol-val {
+            min-width: 44px;
+            text-align: left;
+            font-variant-numeric: tabular-nums;
+        }
+
+        #settingsPanel .btn-back {
+            display: block;
+            width: 200px;
+            font-size: 18px;
+            font-weight: bold;
+            color: #fff;
+            background: linear-gradient(135deg, #718096, #4a5568);
+            border: none;
+            padding: 14px 0;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        #settingsPanel .btn-back:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(113, 128, 150, 0.4);
+        }
+
         #escMenu .hint {
             color: #888;
             font-size: 13px;
@@ -207,8 +280,20 @@
     <div id="escMenu">
         <h2>暂停</h2>
         <button id="btnRestart">重新开始</button>
+        <button id="btnSettings">设置</button>
         <button id="btnQuit">退出游戏</button>
         <div class="hint">按 ESC 关闭菜单继续游戏</div>
+    </div>
+
+    <!-- 设置面板 -->
+    <div id="settingsPanel">
+        <h2>设置</h2>
+        <div class="setting-row">
+            <label for="volumeSlider">音量</label>
+            <input type="range" id="volumeSlider" min="0" max="100" value="70">
+            <span class="vol-val" id="volumeVal">70%</span>
+        </div>
+        <button class="btn-back" id="btnSettingsBack">返回</button>
     </div>
 
     <script type="importmap">
@@ -269,12 +354,29 @@
         const platforms = [];
         const platformGeo = new THREE.BoxGeometry(PLATFORM_SIZE, PLATFORM_THICK, PLATFORM_SIZE);
 
+        // 平台颜色随高度平滑渐变：暖色(低) → 绿(中) → 冷色/白(高)
         function layerColor(layer) {
-            const palette = [
-                0x4a90e2, 0x50c878, 0xf4a460, 0xff6b6b,
-                0x9b59b6, 0x1abc9c, 0xe67e22, 0xecf0f1
+            const y = layer * LAYER_HEIGHT;
+            const gradient = [
+                { pos: 0,    r: 0.29, g: 0.56, b: 0.89 },  // 浅蓝
+                { pos: 9,    r: 0.31, g: 0.78, b: 0.47 },  // 翠绿
+                { pos: 21,   r: 0.96, g: 0.64, b: 0.38 },  // 橙
+                { pos: 36,   r: 1.00, g: 0.42, b: 0.42 },  // 红
+                { pos: 54,   r: 0.61, g: 0.35, b: 0.71 },  // 紫
+                { pos: 75,   r: 0.10, g: 0.74, b: 0.61 },  // 青
+                { pos: 100,  r: 0.93, g: 0.93, b: 0.93 },  // 白灰
             ];
-            return palette[((layer % palette.length) + palette.length) % palette.length];
+            let i = 0;
+            for (; i < gradient.length - 1; i++) {
+                if (y <= gradient[i + 1].pos) break;
+            }
+            const a = gradient[i], b = gradient[Math.min(i + 1, gradient.length - 1)];
+            const t = (y - a.pos) / Math.max(b.pos - a.pos, 0.001);
+            const clamp = Math.max(0, Math.min(1, t));
+            const r = Math.round((a.r + (b.r - a.r) * clamp) * 255);
+            const g = Math.round((a.g + (b.g - a.g) * clamp) * 255);
+            const bl = Math.round((a.b + (b.b - a.b) * clamp) * 255);
+            return (r << 16) | (g << 8) | bl;
         }
 
         // 关键：topY = layer * LAYER_HEIGHT，第0层平台顶面在 y=0
@@ -1117,6 +1219,7 @@
 
         function openEscMenu() {
             gamePaused = true;
+            settingsPanel.style.display = 'none';  // 确保设置面板关闭
             escMenu.style.display = 'flex';
             if (document.pointerLockElement) document.exitPointerLock();
         }
@@ -1124,12 +1227,19 @@
         function closeEscMenu() {
             gamePaused = false;
             escMenu.style.display = 'none';
+            settingsPanel.style.display = 'none';  // 确保设置面板也关闭
         }
 
         // ESC / P 键开关暂停菜单
         document.addEventListener('keydown', (e) => {
             const isToggle = (e.key === 'Escape' || e.key === 'p' || e.key === 'P');
             if (!isToggle || !gameStarted) return;
+            // 如果设置面板开着，ESC/P 先关设置面板回菜单
+            if (settingsPanel.style.display === 'flex') {
+                settingsPanel.style.display = 'none';
+                escMenu.style.display = 'flex';
+                return;
+            }
             // 死亡菜单只能通过按钮关闭，不能用 ESC/P 关闭
             if (deathPending) return;
             // 死亡动画进行中也不允许乱切暂停，防止 deathTimer 卡在 gamePaused 分支
@@ -1143,6 +1253,32 @@
 
         document.getElementById('btnRestart').addEventListener('click', restartGame);
         document.getElementById('btnQuit').addEventListener('click', quitGame);
+
+        // ============== 11.5 设置面板 ==============
+        const settingsPanel = document.getElementById('settingsPanel');
+        const volumeSlider = document.getElementById('volumeSlider');
+        const volumeVal = document.getElementById('volumeVal');
+        const bgMusic = document.getElementById('bgMusic');
+
+        // 初始化音量
+        bgMusic.volume = volumeSlider.value / 100;
+        volumeVal.textContent = volumeSlider.value + '%';
+
+        volumeSlider.addEventListener('input', () => {
+            const v = volumeSlider.value / 100;
+            bgMusic.volume = v;
+            volumeVal.textContent = volumeSlider.value + '%';
+        });
+
+        document.getElementById('btnSettings').addEventListener('click', () => {
+            escMenu.style.display = 'none';
+            settingsPanel.style.display = 'flex';
+        });
+
+        document.getElementById('btnSettingsBack').addEventListener('click', () => {
+            settingsPanel.style.display = 'none';
+            escMenu.style.display = 'flex';
+        });
 
         // ============== 12. 开始按钮 ==============
         const startBtn = document.getElementById('startBtn');
