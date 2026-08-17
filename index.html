@@ -366,6 +366,11 @@
         let modelLoaded = false;
         let gameStarted = false;
 
+        // 死亡动画相关
+        let deathModel = null;          // 机器人模型引用（playerGroup 的子节点）
+        let deathMaterials = [];        // 模型上所有原始 MeshStandardMaterial（保存原始 emissive）
+        let deathStartY = 0;            // 触发死亡时玩家的 Y 位置（用于下沉计算）
+
         // 加载模型（由开始按钮触发）
         function loadModel() {
             const loader = new GLTFLoader();
@@ -397,6 +402,26 @@
                     idleAction.setEffectiveWeight(1);
                     jumpAction.setEffectiveWeight(1);
                     idleAction.play();
+
+                    // 收集模型上所有 MeshStandardMaterial，用于死亡动画变红
+                    deathModel = model;
+                    deathMaterials = [];
+                    model.traverse((child) => {
+                        if (child.isMesh && child.material) {
+                            const mats = Array.isArray(child.material) ? child.material : [child.material];
+                            mats.forEach((m) => {
+                                if (m.isMeshStandardMaterial) {
+                                    deathMaterials.push({
+                                        mat: m,
+                                        origEmissiveR: m.emissive.r,
+                                        origEmissiveG: m.emissive.g,
+                                        origEmissiveB: m.emissive.b,
+                                        origEmissiveI: m.emissiveIntensity,
+                                    });
+                                }
+                            });
+                        }
+                    });
 
                     modelLoaded = true;
                     onModelReady();
@@ -783,7 +808,13 @@
 
         function onPlayerDeath() {
             deathTimer = DEATH_DURATION;
-            playerGroup.visible = false;
+            deathStartY = playerGroup.position.y;
+            // 停掉所有当前动画，防止和程序化死亡动画冲突
+            [walkAction, runAction, idleAction, jumpAction].forEach(a => {
+                if (a) a.fadeOut(0.1);
+            });
+            // 保持模型可见，进入死亡动画阶段
+            playerGroup.visible = true;
         }
 
         // 死亡动画结束后弹出菜单（替换自动重生）
@@ -819,12 +850,51 @@
                 return;
             }
 
-            // 死亡动画期间：只更新岩浆流动视觉，不更新游戏逻辑
+            // 死亡动画期间：只更新岩浆流动视觉 + 死亡动画，不更新游戏逻辑
             if (deathTimer > 0) {
                 deathTimer -= delta;
                 lavaUniforms.time.value += delta * LAVA_TIME_SCALE;
+
+                // 推进 mixer 以完成动画淡出
+                if (mixer) mixer.update(delta);
+
+                // --- 死亡动画：红光 + 下沉 + 倾斜 ---
+                const deathElapsed = DEATH_DURATION - deathTimer;          // 已过去时间
+                const deathHalf = DEATH_DURATION * 0.5;                    // 前半段可见
+                const tNorm = Math.min(deathElapsed / deathHalf, 1.0);     // 0→1（前半段）
+
+                // 材质变红（emissiveIntensity 从 0 → 3，颜色从原色渐变到纯红）
+                deathMaterials.forEach((d) => {
+                    const r = d.origEmissiveR + (1.0 - d.origEmissiveR) * tNorm;
+                    const g = d.origEmissiveG * (1.0 - tNorm);
+                    const b = d.origEmissiveB * (1.0 - tNorm);
+                    d.mat.emissive.setRGB(r, g, b);
+                    d.mat.emissiveIntensity = d.origEmissiveI + 3.0 * tNorm;
+                });
+
+                // 模型下沉：从死亡触发时的 Y 下沉到岩浆面以下
+                const sinkTarget = lavaY - 0.3;
+                playerGroup.position.y = deathStartY + (sinkTarget - deathStartY) * tNorm;
+
+                // 沿 X/Z 轴随机轻微倾斜（身体挣扎倒下的感觉）
+                const tiltX = Math.sin(deathElapsed * 5.0) * 0.15 * tNorm;
+                const tiltZ = Math.cos(deathElapsed * 4.0) * 0.10 * tNorm;
+                deathModel.rotation.x = tiltX;
+                deathModel.rotation.z = tiltZ;
+
+                // 前半段结束后隐藏模型
+                if (deathElapsed >= deathHalf && playerGroup.visible) {
+                    playerGroup.visible = false;
+                }
+
                 if (deathTimer <= 0) {
                     deathTimer = 0;
+                    // 重置模型状态，防止重启时残留旋转/颜色
+                    deathModel.rotation.set(0, 0, 0);
+                    deathMaterials.forEach((d) => {
+                        d.mat.emissive.setRGB(d.origEmissiveR, d.origEmissiveG, d.origEmissiveB);
+                        d.mat.emissiveIntensity = d.origEmissiveI;
+                    });
                     openDeathMenu();
                 }
                 renderer.render(scene, camera);
@@ -1007,6 +1077,20 @@
             deathPending = false;
             resetEscMenuText();
             playerGroup.visible = modelLoaded;
+            // 重置死亡动画残留状态：模型旋转、材质 emissive
+            if (deathModel) deathModel.rotation.set(0, 0, 0);
+            deathMaterials.forEach((d) => {
+                d.mat.emissive.setRGB(d.origEmissiveR, d.origEmissiveG, d.origEmissiveB);
+                d.mat.emissiveIntensity = d.origEmissiveI;
+            });
+            // 恢复 idle 动画
+            if (idleAction) {
+                [walkAction, runAction, idleAction, jumpAction].forEach(a => {
+                    if (a) a.fadeOut(0);
+                });
+                idleAction.reset().fadeIn(0.15).play();
+                currentAnimation = 'idle';
+            }
 
             closeEscMenu();
         }
