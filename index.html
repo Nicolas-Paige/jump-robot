@@ -188,7 +188,7 @@
         <h1>Jump Robot</h1>
         <p>
             往上跳！随机平台不断生成，看你能跳多高<br>
-            WASD 移动 | Shift 冲刺 | 空格跳跃 | 鼠标转视角<br>
+            WASD 移动 | Shift 冲刺 | 空格跳跃 | 鼠标转视角 | ESC / P 暂停<br>
             冲刺时跳跃更高更远，岩浆会从下方缓慢追上来，碰到就死
         </p>
         <button id="startBtn">开始游戏</button>
@@ -196,7 +196,7 @@
 
     <!-- 游戏UI（加载完成后显示） -->
     <div class="tip" style="display:none;">
-        点击锁定鼠标 | WASD移动 | Shift冲刺 | 空格跳跃 | 鼠标转视角 | ESC菜单 | 往上跳，别被岩浆追上
+        点击锁定鼠标 | WASD移动 | Shift冲刺 | 空格跳跃 | 鼠标转视角 | ESC/P 暂停 | 往上跳，别被岩浆追上
     </div>
     <div class="layer" style="display:none;">
         <span id="layerNow">0</span> 层
@@ -544,84 +544,205 @@
         }
 
         // ============== 9.5 岩浆系统 ==============
-        // 参考 https://threelab.cn/articles/threejs-lava-flow
-        // 用 fBm 噪声驱动的流动着色器做岩浆面，缓慢上升，碰到玩家即死亡
+        // 官方 Three.js webgl_shader_lava（TheGameMaker 出品，随官方 examples 维护）
+        // 纹理通过 three 0.160.0 CDN 加载，岩浆面缓慢上升，碰到玩家即死亡
         const LAVA_SIZE = 100;             // 岩浆平面边长
         const LAVA_RISE_SPEED = 0.8;       // 每秒上升速度
         const LAVA_INITIAL_Y = -8;         // 起始高度（低于第0层平台）
         const LAVA_DEATH_MARGIN = 0.1;     // 玩家脚底低于岩浆面多少即判定死亡
         const DEATH_DURATION = 1.0;        // 死亡动画时长（秒）
 
-        const lavaUniforms = { uTime: { value: 0 } };
-
         const lavaGeo = new THREE.PlaneGeometry(LAVA_SIZE, LAVA_SIZE, 1, 1);
+
+        // Three.js 官方 webgl_shader_lava：uv 缩放 & 流动速度可调
+        const LAVA_UV_SCALE = new THREE.Vector2(10.0, 10.0); // 在 100x100 平面上的平铺密度
+        const LAVA_TIME_SCALE = 1.0;  // 对官方 shader 时间系数的整体缩放
+
+        const textureLoader = new THREE.TextureLoader();
+        textureLoader.setCrossOrigin('anonymous');
+
+        // 多源回退：npm 包 0.160.0 没打包 examples/textures/lava，因此依次试
+        //   1) threejs.org 官方示例（实际渲染页面用的 CDN）
+        //   2) GitHub raw（r160 tag 处真实存在）
+        // 最后才走 canvas fallback，保证尽量加载到官方原图
+        const LAVA_TEXTURE_CANDIDATES = {
+            cloud: [
+                'https://threejs.org/examples/textures/lava/cloud.png',
+                'https://raw.githubusercontent.com/mrdoob/three.js/r160/examples/textures/lava/cloud.png'
+            ],
+            tile: [
+                'https://threejs.org/examples/textures/lava/lavatile.jpg',
+                'https://raw.githubusercontent.com/mrdoob/three.js/r160/examples/textures/lava/lavatile.jpg'
+            ]
+        };
+
+        // fallback：程序生成的 64x64 伪噪声，加载失败兜底，保证岩浆至少不黑
+        function makeFallbackTexture(colorHex, addAlphaNoise = false) {
+            const size = 64;
+            const cvs = document.createElement('canvas');
+            cvs.width = cvs.height = size;
+            const ctx = cvs.getContext('2d');
+            const c = new THREE.Color(colorHex);
+            for (let y = 0; y < size; y++) {
+                for (let x = 0; x < size; x++) {
+                    const n = Math.random();
+                    const r = Math.min(255, Math.floor(c.r * 255 * (0.6 + n * 0.8)));
+                    const g = Math.min(255, Math.floor(c.g * 255 * (0.6 + n * 0.8)));
+                    const b = Math.min(255, Math.floor(c.b * 255 * (0.6 + n * 0.8)));
+                    let a = 255;
+                    if (addAlphaNoise) {
+                        // cloud fallback 需要 alpha 通道也有噪声，兼容 p = max(a, 亮度)
+                        a = Math.min(255, Math.floor(n * 255));
+                    }
+                    ctx.fillStyle = `rgba(${r},${g},${b},${a/255})`;
+                    ctx.fillRect(x, y, 1, 1);
+                }
+            }
+            const tex = new THREE.CanvasTexture(cvs);
+            tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+            return tex;
+        }
+
+        // 按候选列表依次尝试加载，第一个成功就用；全部失败则用 canvas fallback
+        function loadLavaTexture(candidates, fallbackColor, addAlphaNoise, markSRGB) {
+            const texObj = { texture: null };
+            function tryNext(idx) {
+                if (idx >= candidates.length) {
+                    console.warn('[Lava] 所有候选源都加载失败，使用 canvas fallback，最终 fallback URL 列表：', candidates);
+                    texObj.texture = makeFallbackTexture(fallbackColor, addAlphaNoise);
+                    if (markSRGB) texObj.texture.colorSpace = THREE.SRGBColorSpace;
+                    return;
+                }
+                const url = candidates[idx];
+                textureLoader.load(
+                    url,
+                    (loadedTex) => {
+                        console.log(`[Lava] 加载成功：${url}`);
+                        loadedTex.wrapS = loadedTex.wrapT = THREE.RepeatWrapping;
+                        if (markSRGB) loadedTex.colorSpace = THREE.SRGBColorSpace;
+                        texObj.texture = loadedTex;
+                    },
+                    undefined,
+                    () => {
+                        console.warn(`[Lava] 候选加载失败，试下一个：${url}`);
+                        tryNext(idx + 1);
+                    }
+                );
+            }
+            // 先占个位：立即返回一个 fallback 占位，后续加载成功后替换
+            texObj.texture = makeFallbackTexture(fallbackColor, addAlphaNoise);
+            if (markSRGB) texObj.texture.colorSpace = THREE.SRGBColorSpace;
+            tryNext(0);
+            return texObj;
+        }
+
+        const cloudTexObj = loadLavaTexture(LAVA_TEXTURE_CANDIDATES.cloud, 0xaaaaaa, true, false);
+        const tileTexObj  = loadLavaTexture(LAVA_TEXTURE_CANDIDATES.tile,  0xff6a00, false, true);
+
+        const lavaUniforms = {
+            fogDensity: { value: 0.0 },   // 场景已有雾，关闭官方 shader 内建指数雾
+            fogColor:    { value: new THREE.Color(0x87CEEB) },
+            time:        { value: 0.0 },
+            uvScale:     { value: LAVA_UV_SCALE.clone() },
+            texture1:    { value: cloudTexObj.texture },   // cloud 噪声图
+            texture2:    { value: tileTexObj.texture }     // lavatile 熔岩贴图
+        };
+        // 等候选源加载成功后把材质 uniform 替换为真正的纹理，触发 shader 更新
+        function pollTextureSwap(obj, uniformKey) {
+            const check = () => {
+                const current = lavaUniforms[uniformKey].value;
+                if (obj.texture && obj.texture !== current) {
+                    current.dispose?.();
+                    lavaUniforms[uniformKey].value = obj.texture;
+                    lavaMat.needsUpdate = true;
+                    return;
+                }
+                requestAnimationFrame(check);
+            };
+            requestAnimationFrame(check);
+        }
+        pollTextureSwap(cloudTexObj, 'texture1');
+        pollTextureSwap(tileTexObj, 'texture2');
+
+        // 顶点着色器：官方 webgl_shader_lava 原版 + 传出 vWorldPos 做边缘淡出
+        const lavaVertexShader = /* glsl */`
+            uniform vec2 uvScale;
+            varying vec2 vUv;
+            varying vec3 vWorldPos;
+
+            void main() {
+                vUv = uvScale * uv;
+                vec4 worldPos = modelMatrix * vec4(position, 1.0);
+                vWorldPos = worldPos.xyz;
+                gl_Position = projectionMatrix * viewMatrix * worldPos;
+            }
+        `;
+
+        // 片元着色器：Three.js 官方 webgl_shader_lava（TheGameMaker）原版
+        // 兼容性修正：
+        //   1) cloud.png 某些来源的 alpha 通道无效 → p 取 max(alpha, 亮度)
+        //   2) color² - 0.1 可能出现负值 → clamp 到 0，避免大面积黑
+        //   3) + 边缘淡出 alpha 融入场景雾
+        const lavaFragmentShader = /* glsl */`
+            uniform float time;
+            uniform float fogDensity;
+            uniform vec3  fogColor;
+            uniform sampler2D texture1;
+            uniform sampler2D texture2;
+
+            varying vec2 vUv;
+            varying vec3 vWorldPos;
+
+            void main( void ) {
+                vec4 noise = texture2D( texture1, vUv );
+                vec2 T1 = vUv + vec2( 1.5, -1.5 ) * time * 0.02;
+                vec2 T2 = vUv + vec2( -0.5, 2.0 ) * time * 0.01;
+
+                T1.x += noise.x * 2.0;
+                T1.y += noise.y * 2.0;
+                T2.x -= noise.y * 0.2;
+                T2.y += noise.z * 0.2;
+
+                vec4 cloudSample = texture2D( texture1, T1 * 2.0 );
+                float lum = dot( cloudSample.rgb, vec3( 0.299, 0.587, 0.114 ) );
+                float p = max( cloudSample.a, lum );  // 兼容 alpha 通道缺失
+
+                vec4 color = texture2D( texture2, T2 * 2.0 );
+                vec4 temp = color * ( vec4( p, p, p, p ) * 2.0 ) + ( color * color - 0.1 );
+
+                // 防止负值钳到 0 变成死黑
+                temp.rgb = max( temp.rgb, vec3( 0.0 ) );
+                temp.a   = max( temp.a, 0.0 );
+
+                if( temp.r > 1.0 ){ temp.bg += clamp( temp.r - 2.0, 0.0, 100.0 ); }
+                if( temp.g > 1.0 ){ temp.rb += temp.g - 1.0; }
+                if( temp.b > 1.0 ){ temp.rg += temp.b - 1.0; }
+
+                vec3 outCol = temp.rgb;
+
+                // 官方内建指数雾（默认 fogDensity=0 关闭），保留用于扩展
+                if ( fogDensity > 0.0 ) {
+                    float depth = gl_FragCoord.z / gl_FragCoord.w;
+                    const float LOG2 = 1.442695;
+                    float fogFactor = exp2( - fogDensity * fogDensity * depth * depth * LOG2 );
+                    fogFactor = 1.0 - clamp( fogFactor, 0.0, 1.0 );
+                    outCol = mix( outCol, fogColor, fogFactor );
+                }
+
+                // 边缘按水平距离淡出，融入远处场景雾
+                float distXZ = length(vWorldPos.xz);
+                float alpha = 1.0 - smoothstep(30.0, 48.0, distXZ);
+                gl_FragColor = vec4(outCol, alpha);
+            }
+        `;
+
         const lavaMat = new THREE.ShaderMaterial({
             uniforms: lavaUniforms,
             transparent: true,
             depthWrite: false,
             side: THREE.DoubleSide,
-            vertexShader: `
-                varying vec2 vUv;
-                varying vec3 vWorldPos;
-                void main() {
-                    vUv = uv * 12.0;
-                    vec4 worldPos = modelMatrix * vec4(position, 1.0);
-                    vWorldPos = worldPos.xyz;
-                    gl_Position = projectionMatrix * viewMatrix * worldPos;
-                }
-            `,
-            fragmentShader: `
-                uniform float uTime;
-                varying vec2 vUv;
-                varying vec3 vWorldPos;
-
-                float noise(vec2 p) {
-                    return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
-                }
-
-                float fbm(vec2 p) {
-                    float value = 0.0;
-                    float amplitude = 0.5;
-                    float frequency = 1.0;
-                    for (int i = 0; i < 5; i++) {
-                        value += amplitude * noise(p * frequency);
-                        amplitude *= 0.5;
-                        frequency *= 2.0;
-                    }
-                    return value;
-                }
-
-                vec3 lavaColor(float heat) {
-                    vec3 coolColor = vec3(0.45, 0.08, 0.0);  // 暗红冷区
-                    vec3 hotColor  = vec3(1.0, 0.85, 0.25);  // 亮黄热区
-                    if (heat < 0.3) {
-                        return coolColor;
-                    } else if (heat < 0.6) {
-                        return mix(coolColor, vec3(1.0, 0.5, 0.0), (heat - 0.3) / 0.3);
-                    } else {
-                        return mix(vec3(1.0, 0.5, 0.0), hotColor, (heat - 0.6) / 0.4);
-                    }
-                }
-
-                void main() {
-                    float t = uTime * 0.25;
-                    vec2 flow = vec2(
-                        fbm(vUv + t),
-                        fbm(vUv - t * 0.7)
-                    );
-                    float heat = fbm(vUv + flow);
-                    vec3 col = lavaColor(heat);
-                    // 高热点加亮，模拟沸腾发光
-                    col += vec3(0.4, 0.15, 0.0) * pow(heat, 3.0);
-                    // 冷区压暗，形成硬壳纹理
-                    col *= smoothstep(0.0, 0.15, heat) * 0.6 + 0.4;
-
-                    // 边缘按水平距离淡出，融入远处雾气
-                    float distXZ = length(vWorldPos.xz);
-                    float alpha = 1.0 - smoothstep(30.0, 48.0, distXZ);
-                    gl_FragColor = vec4(col, alpha);
-                }
-            `
+            vertexShader: lavaVertexShader,
+            fragmentShader: lavaFragmentShader
         });
 
         const lavaMesh = new THREE.Mesh(lavaGeo, lavaMat);
@@ -642,7 +763,7 @@
             lavaY = LAVA_INITIAL_Y;
             lavaMesh.position.y = lavaY;
             lavaLight.position.y = lavaY + 2;
-            lavaUniforms.uTime.value = 0;
+            lavaUniforms.time.value = 0;
         }
 
         function updateLava(delta) {
@@ -651,7 +772,7 @@
             lavaMesh.position.y = lavaY;
             lavaLight.position.y = lavaY + 2;
             // 着色器时间推进，驱动流动动画
-            lavaUniforms.uTime.value += delta;
+            lavaUniforms.time.value += delta * LAVA_TIME_SCALE;
 
             // 死亡检测：玩家脚底低于岩浆面
             if (gameStarted && !gamePaused && deathTimer <= 0 &&
@@ -701,7 +822,7 @@
             // 死亡动画期间：只更新岩浆流动视觉，不更新游戏逻辑
             if (deathTimer > 0) {
                 deathTimer -= delta;
-                lavaUniforms.uTime.value += delta;
+                lavaUniforms.time.value += delta * LAVA_TIME_SCALE;
                 if (deathTimer <= 0) {
                     deathTimer = 0;
                     openDeathMenu();
@@ -921,16 +1042,18 @@
             escMenu.style.display = 'none';
         }
 
-        // ESC 键开关菜单
+        // ESC / P 键开关暂停菜单
         document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape' && gameStarted) {
-                // 死亡菜单只能通过按钮关闭，不能用 ESC 关闭
-                if (deathPending) return;
-                if (gamePaused) {
-                    closeEscMenu();
-                } else {
-                    openEscMenu();
-                }
+            const isToggle = (e.key === 'Escape' || e.key === 'p' || e.key === 'P');
+            if (!isToggle || !gameStarted) return;
+            // 死亡菜单只能通过按钮关闭，不能用 ESC/P 关闭
+            if (deathPending) return;
+            // 死亡动画进行中也不允许乱切暂停，防止 deathTimer 卡在 gamePaused 分支
+            if (deathTimer > 0) return;
+            if (gamePaused) {
+                closeEscMenu();
+            } else {
+                openEscMenu();
             }
         });
 
