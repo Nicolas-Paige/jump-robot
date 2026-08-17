@@ -107,7 +107,7 @@ jump-robot/
 | `gravity` | `-25` | 重力加速度 |
 | `jumpPower` | `13` | 普通跳跃力 |
 | `LAVA_SIZE` | `100` | 岩浆平面边长 |
-| `LAVA_RISE_SPEED` | `0.5` | 岩浆每秒上升速度 |
+| `LAVA_RISE_SPEED` | `0.8` | 岩浆每秒上升速度 |
 | `LAVA_INITIAL_Y` | `-8` | 岩浆起始高度（低于第 0 层） |
 | `LAVA_DEATH_MARGIN` | `0.1` | 玩家脚底低于岩浆面多少即判定死亡 |
 | `DEATH_DURATION` | `1.0` | 死亡动画时长（秒） |
