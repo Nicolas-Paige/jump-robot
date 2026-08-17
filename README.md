@@ -2,6 +2,8 @@
 
 一个基于 Three.js 的 3D 跳跃小游戏。控制机器人角色在随机生成的平台间往上跳跃，看你能跳到第几层。
 
+> 在线试玩：https://static-mp-8348115f-96e8-418b-8155-9dd4a98d922f.next.bspapp.com/game/index.html
+
 ## 游戏特性
 
 - 单文件实现：整个游戏逻辑、UI 和样式都集中在 [index.html](file:///d:/work/test/jump-robot/index.html) 中，无需构建
