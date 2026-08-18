@@ -2,7 +2,9 @@
 
 一个基于 Three.js 的 3D 跳跃小游戏。控制机器人在随机生成的平台间往上跳跃，看你能跳到第几层——但底部的岩浆会持续追上来。
 
-> 在线试玩：https://static-mp-8348115f-96e8-418b-8155-9dd4a98d922f.next.bspapp.com/game/index.html
+> 在线试玩：
+> 1. https://static-mp-8348115f-96e8-418b-8155-9dd4a98d922f.next.bspapp.com/game/index.html
+> 2. https://jump-robot.vercel.app/
 
 ---
 
@@ -152,7 +154,9 @@ jump-robot/
 
 A 3D jumping mini-game built with Three.js. Control a robot to jump upward across randomly generated platforms and see how high you can climb — but the lava at the bottom keeps rising.
 
-> Play online: https://static-mp-8348115f-96e8-418b-8155-9dd4a98d922f.next.bspapp.com/game/index.html
+> Play online:
+> 1. https://static-mp-8348115f-96e8-418b-8155-9dd4a98d922f.next.bspapp.com/game/index.html
+> 2. https://jump-robot.vercel.app/
 
 ---
 
