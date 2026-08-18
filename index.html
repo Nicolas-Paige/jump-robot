@@ -590,8 +590,18 @@
             if (e.key === 'Shift') keys.shift = false;
         });
 
-        document.body.addEventListener('click', () => {
+        document.body.addEventListener('click', (e) => {
+            // 菜单/设置面板打开时不请求 pointer lock，否则光标会被吞掉
+            if (escMenu.style.display === 'flex' || settingsPanel.style.display === 'flex') return;
             document.body.requestPointerLock();
+        });
+
+        // pointer lock 被释放（用户按 ESC）时自动弹菜单
+        // 浏览器在 pointer lock 下按 ESC 会吞掉 keydown/keyup，只能靠这个事件检测
+        document.addEventListener('pointerlockchange', () => {
+            if (!document.pointerLockElement && gameStarted && !gamePaused && deathTimer <= 0 && !deathPending) {
+                openEscMenu();
+            }
         });
 
         document.addEventListener('mousemove', (e) => {
@@ -1230,17 +1240,17 @@
             settingsPanel.style.display = 'none';  // 确保设置面板也关闭
         }
 
-        // ESC / P 键开关暂停菜单
+        // P 键开关暂停菜单
         document.addEventListener('keydown', (e) => {
-            const isToggle = (e.key === 'Escape' || e.key === 'p' || e.key === 'P');
+            const isToggle = (e.key === 'p' || e.key === 'P');
             if (!isToggle || !gameStarted) return;
-            // 如果设置面板开着，ESC/P 先关设置面板回菜单
+            // 如果设置面板开着，P 先关设置面板回菜单
             if (settingsPanel.style.display === 'flex') {
                 settingsPanel.style.display = 'none';
                 escMenu.style.display = 'flex';
                 return;
             }
-            // 死亡菜单只能通过按钮关闭，不能用 ESC/P 关闭
+            // 死亡菜单只能通过按钮关闭，不能用 P 关闭
             if (deathPending) return;
             // 死亡动画进行中也不允许乱切暂停，防止 deathTimer 卡在 gamePaused 分支
             if (deathTimer > 0) return;
@@ -1249,6 +1259,22 @@
             } else {
                 openEscMenu();
             }
+        });
+
+        // ESC 关闭菜单：菜单打开时 pointer lock 已不在，keydown 能正常派发
+        // 打开方向由 pointerlockchange 事件处理（ESC 在 lock 下会吞掉 keydown）
+        document.addEventListener('keydown', (e) => {
+            if (e.key !== 'Escape' || !gameStarted) return;
+            // 设置面板打开时，ESC 回到主菜单
+            if (settingsPanel.style.display === 'flex') {
+                settingsPanel.style.display = 'none';
+                escMenu.style.display = 'flex';
+                return;
+            }
+            // 死亡菜单 / 死亡动画中不响应 ESC
+            if (deathPending || deathTimer > 0) return;
+            // 菜单已开 → 关闭
+            if (gamePaused) closeEscMenu();
         });
 
         document.getElementById('btnRestart').addEventListener('click', restartGame);
