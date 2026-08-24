@@ -3,6 +3,7 @@
 
 <head>
     <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <title>Jump Robot</title>
     <style>
         * {
@@ -249,6 +250,161 @@
         #bgMusic {
             display: none;
         }
+
+        /* ============== 移动端触控 UI ============== */
+        /* 仅触控设备显示 */
+        #touchControls,
+        #rotateHint {
+            display: none;
+        }
+        body.touch #touchControls {
+            display: block;
+        }
+
+        /* 竖屏旋转提示：只在触控设备 + 竖屏时显示 */
+        body.touch #rotateHint {
+            display: none;
+        }
+        @media (orientation: portrait) {
+            body.touch #rotateHint {
+                display: flex;
+            }
+        }
+        #rotateHint {
+            position: fixed;
+            inset: 0;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            z-index: 2000;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            text-align: center;
+        }
+        #rotateHint .rotate-icon {
+            font-size: 64px;
+            margin-bottom: 20px;
+            animation: rotateAnim 2s ease-in-out infinite;
+        }
+        @keyframes rotateAnim {
+            0%, 100% { transform: rotate(0deg); }
+            50% { transform: rotate(90deg); }
+        }
+        #rotateHint h2 {
+            font-size: 22px;
+            margin-bottom: 8px;
+        }
+        #rotateHint p {
+            font-size: 14px;
+            color: #aab;
+        }
+
+        /* 触控容器：覆盖整个屏幕，高于 .tip/.layer 但低于菜单层 */
+        #touchControls {
+            position: fixed;
+            inset: 0;
+            z-index: 100;
+            touch-action: none;
+            -webkit-user-select: none;
+            user-select: none;
+            -webkit-touch-callout: none;
+        }
+
+        /* 虚拟摇杆：左下角 */
+        #joystick {
+            position: absolute;
+            left: 30px;
+            bottom: 30px;
+            width: 130px;
+            height: 130px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.08);
+            border: 2px solid rgba(255, 255, 255, 0.25);
+            backdrop-filter: blur(4px);
+        }
+        #joystickThumb {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 56px;
+            height: 56px;
+            margin: -28px 0 0 -28px;
+            border-radius: 50%;
+            background: radial-gradient(circle at 35% 35%, rgba(255,255,255,0.9), rgba(200,200,220,0.7));
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+            pointer-events: none;
+        }
+
+        /* 触控按钮通用样式 */
+        .touch-btn {
+            position: absolute;
+            border-radius: 50%;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            color: #fff;
+            font-weight: bold;
+            font-size: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            backdrop-filter: blur(4px);
+            -webkit-tap-highlight-color: transparent;
+            touch-action: none;
+            user-select: none;
+        }
+        .touch-btn:active {
+            transform: scale(0.92);
+        }
+
+        /* 跳跃按钮：右下 */
+        #btnJump {
+            right: 30px;
+            bottom: 40px;
+            width: 90px;
+            height: 90px;
+            background: rgba(74, 144, 226, 0.45);
+        }
+        /* 冲刺按钮：跳跃左上 */
+        #btnDash {
+            right: 135px;
+            bottom: 110px;
+            width: 70px;
+            height: 70px;
+            font-size: 14px;
+            background: rgba(255, 107, 107, 0.45);
+        }
+        /* 暂停按钮：右上 */
+        #btnPauseTouch {
+            top: 15px;
+            right: 15px;
+            width: 50px;
+            height: 50px;
+            font-size: 22px;
+            background: rgba(0, 0, 0, 0.5);
+        }
+
+        /* 相机拖拽层：右半屏，置于按钮之下 */
+        #cameraLayer {
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 50%;
+            height: 100%;
+            background: transparent;
+        }
+
+        /* 触控设备隐藏键盘提示（WASD/ESC 在手机上无意义） */
+        body.touch .tip {
+            display: none !important;
+        }
+        /* 触控设备：层数显示移到左上角，给暂停按钮让位 */
+        body.touch .layer {
+            top: 15px;
+            right: auto;
+            left: 15px;
+            font-size: 20px;
+            padding: 8px 14px;
+        }
     </style>
 </head>
 
@@ -296,6 +452,24 @@
         <button class="btn-back" id="btnSettingsBack">返回</button>
     </div>
 
+    <!-- 移动端：横屏旋转提示 -->
+    <div id="rotateHint">
+        <div class="rotate-icon">📱</div>
+        <h2>请横屏使用</h2>
+        <p>本游戏需要横屏体验</p>
+    </div>
+
+    <!-- 移动端：触控控件（摇杆 + 按钮 + 相机拖拽层） -->
+    <div id="touchControls">
+        <div id="cameraLayer"></div>
+        <div id="joystick">
+            <div id="joystickThumb"></div>
+        </div>
+        <button class="touch-btn" id="btnDash">冲刺</button>
+        <button class="touch-btn" id="btnJump">跳</button>
+        <button class="touch-btn" id="btnPauseTouch">‖</button>
+    </div>
+
     <script type="importmap">
         {
             "imports": {
@@ -317,12 +491,16 @@
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
         camera.position.set(0, 5, 10);
 
+        // 触控设备检测（用于启用虚拟摇杆 / 跳过 Pointer Lock / 降低性能参数）
+        const isTouchDevice = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+        if (isTouchDevice) document.body.classList.add('touch');
+
         const renderer = new THREE.WebGLRenderer({
-            antialias: true,
+            antialias: !isTouchDevice,           // 移动端关闭 AA 提升性能
             powerPreference: "high-performance"
         });
         renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, isTouchDevice ? 1.5 : 2));
         renderer.shadowMap.enabled = true;
         renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         document.body.appendChild(renderer.domElement);
@@ -334,8 +512,9 @@
         const dirLight = new THREE.DirectionalLight(0xffffff, 1.0);
         dirLight.position.set(20, 60, 20);
         dirLight.castShadow = true;
-        dirLight.shadow.mapSize.width = 2048;
-        dirLight.shadow.mapSize.height = 2048;
+        const shadowMapRes = isTouchDevice ? 1024 : 2048;
+        dirLight.shadow.mapSize.width = shadowMapRes;
+        dirLight.shadow.mapSize.height = shadowMapRes;
         dirLight.shadow.camera.near = 0.5;
         dirLight.shadow.camera.far = 200;
         dirLight.shadow.camera.left = -60;
@@ -591,6 +770,8 @@
         });
 
         document.body.addEventListener('click', (e) => {
+            // 移动端不支持 Pointer Lock，跳过
+            if (isTouchDevice) return;
             // 菜单/设置面板打开时不请求 pointer lock，否则光标会被吞掉
             if (escMenu.style.display === 'flex' || settingsPanel.style.display === 'flex') return;
             document.body.requestPointerLock();
@@ -599,6 +780,7 @@
         // pointer lock 被释放（用户按 ESC）时自动弹菜单
         // 浏览器在 pointer lock 下按 ESC 会吞掉 keydown/keyup，只能靠这个事件检测
         document.addEventListener('pointerlockchange', () => {
+            if (isTouchDevice) return;  // 移动端不会触发，防御性返回
             if (!document.pointerLockElement && gameStarted && !gamePaused && deathTimer <= 0 && !deathPending) {
                 openEscMenu();
             }
@@ -1322,8 +1504,167 @@
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, isTouchDevice ? 1.5 : 2));
         });
+
+        // ============== 12. 移动端触控输入 ==============
+        // 仅触控设备启用；摇杆/按钮直接修改 keys 与 yaw，与键鼠逻辑互不干扰
+        if (isTouchDevice) {
+            const joystick = document.getElementById('joystick');
+            const joystickThumb = document.getElementById('joystickThumb');
+            const cameraLayer = document.getElementById('cameraLayer');
+            const btnJump = document.getElementById('btnJump');
+            const btnDash = document.getElementById('btnDash');
+            const btnPauseTouch = document.getElementById('btnPauseTouch');
+
+            const JOY_RADIUS = 50;          // 摇杆最大位移
+            const JOY_DEADZONE = 0.35;       // 死区阈值（归一化 0~1）
+            let joyTouchId = null;           // 当前控制摇杆的触摸点 id
+            let joyCenter = { x: 0, y: 0 };  // 摇杆中心（屏幕坐标）
+            let camTouchId = null;           // 当前控制相机的触摸点 id
+            let camLastX = 0;
+
+            // 计算摇杆中心（相对屏幕）
+            function computeJoyCenter() {
+                const r = joystick.getBoundingClientRect();
+                return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+            }
+
+            // 把摇杆向量映射到 keys（8 方向 + 死区）
+            function applyJoystick(dx, dy) {
+                const mag = Math.hypot(dx, dy);
+                // 归一化到 0~1（基于 JOY_RADIUS）
+                const nx = mag > 0 ? dx / JOY_RADIUS : 0;
+                const ny = mag > 0 ? dy / JOY_RADIUS : 0;
+                const nMag = Math.min(1, Math.hypot(nx, ny));
+                // 清零，重新赋值
+                keys.w = false; keys.a = false; keys.s = false; keys.d = false;
+                if (nMag < JOY_DEADZONE) return;
+                // ny < 0 = 向上推 = 前进（W）；nx < 0 = 向左 = A
+                if (ny < -0.4) keys.w = true;
+                if (ny >  0.4) keys.s = true;
+                if (nx < -0.4) keys.a = true;
+                if (nx >  0.4) keys.d = true;
+            }
+
+            function resetJoystick() {
+                keys.w = false; keys.a = false; keys.s = false; keys.d = false;
+                joystickThumb.style.transform = 'translate(0, 0)';
+            }
+
+            // ---- 摇杆触摸 ----
+            joystick.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                if (joyTouchId !== null) return;
+                const t = e.changedTouches[0];
+                joyTouchId = t.identifier;
+                joyCenter = computeJoyCenter();
+            }, { passive: false });
+
+            joystick.addEventListener('touchmove', (e) => {
+                e.preventDefault();
+                for (const t of e.changedTouches) {
+                    if (t.identifier !== joyTouchId) continue;
+                    let dx = t.clientX - joyCenter.x;
+                    let dy = t.clientY - joyCenter.y;
+                    // 钳制到半径内
+                    const mag = Math.hypot(dx, dy);
+                    if (mag > JOY_RADIUS) {
+                        dx = dx / mag * JOY_RADIUS;
+                        dy = dy / mag * JOY_RADIUS;
+                    }
+                    joystickThumb.style.transform = `translate(${dx}px, ${dy}px)`;
+                    applyJoystick(dx, dy);
+                }
+            }, { passive: false });
+
+            const joyEnd = (e) => {
+                e.preventDefault();
+                for (const t of e.changedTouches) {
+                    if (t.identifier === joyTouchId) {
+                        joyTouchId = null;
+                        resetJoystick();
+                    }
+                }
+            };
+            joystick.addEventListener('touchend', joyEnd, { passive: false });
+            joystick.addEventListener('touchcancel', joyEnd, { passive: false });
+
+            // ---- 相机拖拽（右半屏） ----
+            cameraLayer.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                if (camTouchId !== null) return;
+                const t = e.changedTouches[0];
+                camTouchId = t.identifier;
+                camLastX = t.clientX;
+            }, { passive: false });
+
+            cameraLayer.addEventListener('touchmove', (e) => {
+                e.preventDefault();
+                for (const t of e.changedTouches) {
+                    if (t.identifier !== camTouchId) continue;
+                    const dx = t.clientX - camLastX;
+                    camLastX = t.clientX;
+                    yaw -= dx * mouseSens * 1.5;  // 略放大手感
+                }
+            }, { passive: false });
+
+            const camEnd = (e) => {
+                e.preventDefault();
+                for (const t of e.changedTouches) {
+                    if (t.identifier === camTouchId) camTouchId = null;
+                }
+            };
+            cameraLayer.addEventListener('touchend', camEnd, { passive: false });
+            cameraLayer.addEventListener('touchcancel', camEnd, { passive: false });
+
+            // ---- 跳跃按钮 ----
+            const pressJump = (e) => {
+                e.preventDefault();
+                keys.space = true;
+            };
+            const releaseJump = (e) => {
+                e.preventDefault();
+                keys.space = false;
+            };
+            btnJump.addEventListener('touchstart', pressJump, { passive: false });
+            btnJump.addEventListener('touchend', releaseJump, { passive: false });
+            btnJump.addEventListener('touchcancel', releaseJump, { passive: false });
+
+            // ---- 冲刺按钮（按住生效） ----
+            const pressDash = (e) => {
+                e.preventDefault();
+                keys.shift = true;
+            };
+            const releaseDash = (e) => {
+                e.preventDefault();
+                keys.shift = false;
+            };
+            btnDash.addEventListener('touchstart', pressDash, { passive: false });
+            btnDash.addEventListener('touchend', releaseDash, { passive: false });
+            btnDash.addEventListener('touchcancel', releaseDash, { passive: false });
+
+            // ---- 暂停按钮 ----
+            btnPauseTouch.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                if (!gameStarted) return;
+                // 死亡菜单 / 死亡动画中不响应
+                if (deathPending || deathTimer > 0) return;
+                if (settingsPanel.style.display === 'flex') {
+                    settingsPanel.style.display = 'none';
+                    escMenu.style.display = 'flex';
+                    return;
+                }
+                if (gamePaused) closeEscMenu();
+                else openEscMenu();
+            }, { passive: false });
+
+            // 防止移动端双指缩放与上下文菜单
+            document.addEventListener('gesturestart', (e) => e.preventDefault());
+            document.addEventListener('contextmenu', (e) => {
+                if (e.target.closest('#touchControls')) e.preventDefault();
+            });
+        }
     </script>
 </body>
 
