@@ -2,7 +2,7 @@
 
 一个基于 Three.js + Vue 3 的 3D 跳跃小游戏。控制机器人在随机生成的平台间往上跳跃，看你能跳到第几层——但底部的岩浆会持续追上来。
 
-> 在线试玩：https://jump-robot.vercel.app/
+> 在线试玩：https://jump-robot-v0d1pljk.edgeone.cool/
 
 ---
 
@@ -273,7 +273,7 @@ export const MC_PALETTE: PaletteSeg[] = [
 
 A 3D jumping mini-game built with Three.js + Vue 3. Control a robot to jump upward across randomly generated platforms and see how high you can climb — but the lava at the bottom keeps rising.
 
-> Play online: https://jump-robot.vercel.app/
+> Play online: https://jump-robot-v0d1pljk.edgeone.cool/
 
 ---
 
