@@ -2,15 +2,16 @@ import { ref, shallowRef, onUnmounted, type Ref } from 'vue';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import {
-    LAYER_HEIGHT, PLATFORM_SIZE,
-    MOUSE_SENS, MOVE_SPEED, RUN_SPEED_MULTIPLIER, DASH_JUMP_MULTIPLIER, GRAVITY, JUMP_POWER,
+    MOUSE_SENS, RUN_SPEED_MULTIPLIER, DASH_JUMP_MULTIPLIER,
     CAM_DIST, CAM_HEIGHT, CAM_SMOOTH,
-    LAVA_INITIAL_Y, DEATH_DURATION,
+    DEATH_DURATION,
 } from '../game/constants';
 import { PlatformSystem } from '../game/PlatformSystem';
 import { LavaSystem } from '../game/LavaSystem';
 import { disposePixelTextures } from '../game/textures';
 import type { GamePhase, InputKeys, DeathMaterialRecord } from '../game/types';
+import type { GameMode } from '../game/modes/types';
+import { DEFAULT_MODE } from '../game/modes/registry';
 
 // 模型本地路径（Vite 会处理为 URL）
 import robotModelUrl from '../../models/RobotExpressive.glb';
@@ -56,6 +57,9 @@ export function useGame(options: UseGameOptions) {
     let deathStartY = 0;
     let deathTimer = 0;
     let deathPending = false;
+
+    // 当前模式
+    const currentMode = shallowRef<GameMode>(DEFAULT_MODE);
 
     // 系统
     let platformSystem: PlatformSystem | null = null;
@@ -123,11 +127,10 @@ export function useGame(options: UseGameOptions) {
         s.add(pg);
         playerGroup.value = pg;
 
-        // 平台系统
+        // 平台系统（仅创建实例，generator 在 startGame 里设置）
         platformSystem = new PlatformSystem(s);
-        platformSystem.initInitialLayers();
 
-        // 岩浆
+        // 岩浆（始终创建，enabled 由 mode 控制）
         lavaSystem = new LavaSystem(s, s.background as THREE.Color);
 
         clock = new THREE.Clock();
@@ -301,6 +304,7 @@ export function useGame(options: UseGameOptions) {
 
         // ===== 玩家移动 =====
         const pg = playerGroup.value!;
+        const mode = currentMode.value;
         const forward = new THREE.Vector3(0, 0, -1);
         forward.applyQuaternion(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw));
         const right = new THREE.Vector3(1, 0, 0);
@@ -314,7 +318,7 @@ export function useGame(options: UseGameOptions) {
         if (moveDir.length() > 0) moveDir.normalize();
 
         const isRunning = keys.shift && moveDir.length() > 0;
-        const curSpeed = isRunning ? MOVE_SPEED * RUN_SPEED_MULTIPLIER : MOVE_SPEED;
+        const curSpeed = isRunning ? mode.moveSpeed * mode.dashMultiplier : mode.moveSpeed;
         pg.position.x += moveDir.x * curSpeed * delta;
         pg.position.z += moveDir.z * curSpeed * delta;
 
@@ -330,14 +334,14 @@ export function useGame(options: UseGameOptions) {
         // 跳跃
         if (keys.space && isGrounded) {
             const mult = isRunning ? DASH_JUMP_MULTIPLIER : 1;
-            velY = JUMP_POWER * mult;
+            velY = mode.jumpPower * mult;
             isGrounded = false;
             switchAnimation('jump');
         }
 
         // 重力 + 落地
         const prevFootY = pg.position.y;
-        velY += GRAVITY * delta;
+        velY += mode.gravity * delta;
         pg.position.y += velY * delta;
         const newFootY = pg.position.y;
 
@@ -351,6 +355,33 @@ export function useGame(options: UseGameOptions) {
                     currentLayer.value = landed.layer;
                     if (landed.layer > bestLayer.value) bestLayer.value = landed.layer;
                 }
+
+                // 平台类型行为
+                switch (landed.type) {
+                    case 'bouncy':
+                        velY = landed.behavior?.bouncePower ?? 20;
+                        isGrounded = false;
+                        break;
+                    case 'disappearing':
+                        if (landed.disappearTimer <= 0) {
+                            landed.disappearTimer = landed.behavior?.lifespan ?? 1.0;
+                        }
+                        break;
+                    case 'fragile':
+                        // 立即消失
+                        platformSystem!.removePlatform(landed);
+                        isGrounded = false;
+                        break;
+                }
+
+                // 模式落地 hook
+                mode.onPlayerLanded?.(landed, {
+                    currentLayer: currentLayer.value,
+                    bestLayer: bestLayer.value,
+                    timeElapsed: 0,
+                    playerFootY: pg.position.y,
+                    lavaY: lavaSystem!.y,
+                });
             } else {
                 isGrounded = false;
             }
@@ -371,11 +402,22 @@ export function useGame(options: UseGameOptions) {
             currentLayer.value = 0;
         }
 
+        // 平台更新（移动 / 消失倒计时）
+        platformSystem!.update(delta);
         // 平台动态管理
         platformSystem!.manage(pg.position.y);
         // 岩浆
         lavaSystem!.update(delta);
         if (lavaSystem!.checkDeath(pg.position.y)) onPlayerDeath();
+
+        // 模式每帧 hook
+        mode.onUpdate?.(delta, {
+            currentLayer: currentLayer.value,
+            bestLayer: bestLayer.value,
+            timeElapsed: 0,
+            playerFootY: pg.position.y,
+            lavaY: lavaSystem!.y,
+        });
 
         // 视线遮挡
         const camPos = camera.value!.position.clone();
@@ -395,9 +437,22 @@ export function useGame(options: UseGameOptions) {
     }
 
     // ============== 7. 控制 API（给 UI 调用） ==============
-    function startGame() {
+    function startGame(mode: GameMode = DEFAULT_MODE) {
+        currentMode.value = mode;
         loadingProgress.value = 0;
         loadError.value = null;
+
+        // 应用模式配置到引擎子系统
+        if (platformSystem) {
+            platformSystem.clear();
+            platformSystem.setGenerator(mode.createGenerator(), mode);
+            platformSystem.initInitialLayers();
+        }
+        if (lavaSystem) {
+            lavaSystem.reset(mode.lava.initialY, mode.lava.riseSpeed);
+            lavaSystem.setEnabled(mode.lava.enabled);
+        }
+
         // 重试时如果模型已挂载到 playerGroup（部分加载），先清理
         if (playerGroup.value && playerGroup.value.children.length > 0) {
             while (playerGroup.value.children.length > 0) {
@@ -432,16 +487,19 @@ export function useGame(options: UseGameOptions) {
 
     function restartGame() {
         const pg = playerGroup.value!;
+        const mode = currentMode.value;
         pg.position.set(0, 0, 0);
         velY = 0;
         isGrounded = true;
         yaw = 0;
 
         platformSystem!.clear();
+        platformSystem!.setGenerator(mode.createGenerator(), mode);
         platformSystem!.initInitialLayers();
 
         currentLayer.value = 0;
-        lavaSystem!.reset();
+        lavaSystem!.reset(mode.lava.initialY, mode.lava.riseSpeed);
+        lavaSystem!.setEnabled(mode.lava.enabled);
         deathTimer = 0;
         deathPending = false;
         pg.visible = modelLoaded;
@@ -495,7 +553,7 @@ export function useGame(options: UseGameOptions) {
     return {
         // 状态
         phase, currentLayer, bestLayer, volume,
-        loadingProgress, loadError,
+        loadingProgress, loadError, currentMode,
         // 引擎控制
         initScene, startGame, pauseGame, resumeGame,
         openSettings, closeSettings,

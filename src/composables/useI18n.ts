@@ -45,6 +45,12 @@ const translations = {
     rotateHintDesc: { zh: '本游戏需要横屏体验', en: 'This game requires landscape mode' },
     dash: { zh: '冲刺', en: 'Dash' },
     jump: { zh: '跳', en: 'Jump' },
+
+    // Modes（key 必须与 xxx.mode.ts 里的 name/description 对应）
+    'mode.classic.name': { zh: '经典模式', en: 'Classic' },
+    'mode.classic.desc': { zh: '岩浆慢速追，能跳多高跳多高', en: 'Lava rises slowly, jump as high as you can' },
+    'mode.inferno.name': { zh: '地狱模式', en: 'Inferno' },
+    'mode.inferno.desc': { zh: '移动 + 消失平台，岩浆更快追击', en: 'Moving & disappearing platforms, faster lava' },
 } as const;
 
 export type TranslationKey = keyof typeof translations;
@@ -78,8 +84,9 @@ function setLanguage(lang: Language) {
 export function useI18n() {
     const t = computed(() => translations);
 
-    function tr(key: TranslationKey): string {
-        return translations[key][language.value];
+    function tr(key: TranslationKey | string): string {
+        const k = key as TranslationKey;
+        return (translations as Record<string, { zh: string; en: string }>)[k]?.[language.value] ?? key;
     }
 
     return {

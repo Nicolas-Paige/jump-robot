@@ -9,6 +9,7 @@ import EscMenu from './components/EscMenu.vue';
 import SettingsPanel from './components/SettingsPanel.vue';
 import TouchControls from './components/TouchControls.vue';
 import type { GamePhase } from './game/types';
+import type { GameMode } from './game/modes/types';
 import bgMusicUrl from '../assets/bg-music.mp4';
 
 // canvas + audio 引用（都在顶层，不随 v-if 销毁）
@@ -54,12 +55,12 @@ const touchHandlers = useTouchInput({
 });
 
 // ===== 开始游戏 =====
-async function onStart() {
+async function onStart(mode: GameMode) {
     if (IS_TOUCH_DEVICE) document.body.classList.add('touch');
     await nextTick();
     if (canvasRef.value) {
         game.initScene();
-        game.startGame();
+        game.startGame(mode);
     }
 }
 

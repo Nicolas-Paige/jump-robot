@@ -135,6 +135,8 @@ export class LavaSystem {
     readonly uniforms: { [k: string]: THREE.IUniform };
     private readonly mat: THREE.ShaderMaterial;
     private lavaY = LAVA_INITIAL_Y;
+    private riseSpeed = LAVA_RISE_SPEED;
+    private enabled = true;
 
     constructor(scene: THREE.Scene, fogColor: THREE.Color) {
         const geo = new THREE.PlaneGeometry(LAVA_SIZE, LAVA_SIZE, 1, 1);
@@ -191,9 +193,11 @@ export class LavaSystem {
 
     // 每帧更新：上升 + 推进 shader 时间
     update(delta: number): void {
-        this.lavaY += LAVA_RISE_SPEED * delta;
-        this.mesh.position.y = this.lavaY;
-        this.light.position.y = this.lavaY + 2;
+        if (this.enabled) {
+            this.lavaY += this.riseSpeed * delta;
+            this.mesh.position.y = this.lavaY;
+            this.light.position.y = this.lavaY + 2;
+        }
         (this.uniforms.time.value as number) += delta * LAVA_TIME_SCALE;
     }
 
@@ -204,16 +208,25 @@ export class LavaSystem {
 
     // 死亡检测：玩家脚底低于岩浆面
     checkDeath(playerY: number): boolean {
+        if (!this.enabled) return false;
         return playerY < this.lavaY - LAVA_DEATH_MARGIN;
     }
 
     get y(): number { return this.lavaY; }
 
-    reset(): void {
-        this.lavaY = LAVA_INITIAL_Y;
+    reset(initialY?: number, riseSpeed?: number): void {
+        if (initialY !== undefined) this.lavaY = initialY;
+        if (riseSpeed !== undefined) this.riseSpeed = riseSpeed;
         this.mesh.position.y = this.lavaY;
         this.light.position.y = this.lavaY + 2;
         this.uniforms.time.value = 0;
+    }
+
+    // 模式控制：禁用岩浆（用于训练等模式）
+    setEnabled(enabled: boolean): void {
+        this.enabled = enabled;
+        this.mesh.visible = enabled;
+        this.light.visible = enabled;
     }
 
     dispose(): void {

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import type { PlatformType, PlatformBehavior } from './platforms/types';
 
 // ============== 全局类型定义 ==============
 
@@ -6,8 +7,11 @@ import * as THREE from 'three';
 export interface Platform {
     mesh: THREE.Mesh;
     material: THREE.MeshLambertMaterial;  // 强类型引用，避免 Material | Material[] 联合
-    x: number;
-    z: number;
+    x: number;                  // 当前 x（移动平台会变）
+    z: number;                  // 当前 z（移动平台会变）
+    baseX: number;              // 生成时的中心 x（移动平台振动的中心）
+    baseZ: number;              // 生成时的中心 z
+    baseY: number;              // 生成时的 topY（y 轴移动平台振动的中心）
     layer: number;
     size: number;
     topY: number;
@@ -15,6 +19,12 @@ export interface Platform {
     maxX: number;
     minZ: number;
     maxZ: number;
+    // 平台类型与行为
+    type: PlatformType;
+    behavior?: PlatformBehavior;
+    // 运行时状态
+    disappearTimer: number;     // 消失倒计时（>0 表示已触发，倒计时到 0 时消失）
+    spawned: boolean;           // 是否已生成（用于动画淡入）
 }
 
 // 输入状态
