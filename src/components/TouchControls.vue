@@ -109,6 +109,7 @@ function joyEnd(e: TouchEvent) {
     justify-content: center;
     color: #fff;
     text-align: center;
+    padding: 0 20px;
 }
 #rotateHint .rotate-icon {
     font-size: 64px;
@@ -139,11 +140,11 @@ function joyEnd(e: TouchEvent) {
     -webkit-touch-callout: none;
 }
 
-/* 摇杆 */
+/* 摇杆 —— left/bottom 使用 safe-area 防刘海/黑边遮挡 */
 #joystick {
     position: absolute;
-    left: 30px;
-    bottom: 30px;
+    left: max(30px, env(safe-area-inset-left) + 20px);
+    bottom: max(30px, env(safe-area-inset-bottom) + 20px);
     width: 130px;
     height: 130px;
     border-radius: 50%;
@@ -186,23 +187,23 @@ function joyEnd(e: TouchEvent) {
 }
 
 #btnJump {
-    right: 30px;
-    bottom: 40px;
+    right: max(30px, env(safe-area-inset-right) + 20px);
+    bottom: max(40px, env(safe-area-inset-bottom) + 24px);
     width: 90px;
     height: 90px;
     background: rgba(74, 144, 226, 0.45);
 }
 #btnDash {
-    right: 135px;
-    bottom: 110px;
+    right: max(135px, env(safe-area-inset-right) + 120px);
+    bottom: max(110px, env(safe-area-inset-bottom) + 70px);
     width: 70px;
     height: 70px;
     font-size: 14px;
     background: rgba(255, 107, 107, 0.45);
 }
 #btnPauseTouch {
-    top: 15px;
-    right: 15px;
+    top: max(15px, env(safe-area-inset-top) + 10px);
+    right: max(15px, env(safe-area-inset-right) + 10px);
     width: 50px;
     height: 50px;
     font-size: 22px;
@@ -217,5 +218,64 @@ function joyEnd(e: TouchEvent) {
     width: 50%;
     height: 100%;
     background: transparent;
+}
+
+/* ============ 小屏横屏适配（高度 < 400px 或 宽度 < 650px） ============ */
+@media (max-height: 400px), (max-width: 650px) {
+    #joystick {
+        width: 100px;
+        height: 100px;
+        left: max(18px, env(safe-area-inset-left) + 12px);
+        bottom: max(18px, env(safe-area-inset-bottom) + 12px);
+    }
+    #joystickThumb {
+        width: 44px;
+        height: 44px;
+        margin: -22px 0 0 -22px;
+    }
+    #btnJump {
+        width: 72px;
+        height: 72px;
+        right: max(20px, env(safe-area-inset-right) + 14px);
+        bottom: max(24px, env(safe-area-inset-bottom) + 14px);
+        font-size: 14px;
+    }
+    #btnDash {
+        width: 56px;
+        height: 56px;
+        right: max(102px, env(safe-area-inset-right) + 88px);
+        bottom: max(72px, env(safe-area-inset-bottom) + 44px);
+        font-size: 12px;
+    }
+    #btnPauseTouch {
+        width: 42px;
+        height: 42px;
+        font-size: 18px;
+        top: max(10px, env(safe-area-inset-top) + 6px);
+        right: max(10px, env(safe-area-inset-right) + 6px);
+    }
+}
+
+/* 更极端的小屏（高度 < 340px，例如超窄安卓横屏）：再缩一档 */
+@media (max-height: 340px) {
+    #joystick {
+        width: 84px;
+        height: 84px;
+    }
+    #joystickThumb {
+        width: 38px;
+        height: 38px;
+        margin: -19px 0 0 -19px;
+    }
+    #btnJump {
+        width: 60px;
+        height: 60px;
+    }
+    #btnDash {
+        width: 48px;
+        height: 48px;
+        right: max(82px, env(safe-area-inset-right) + 68px);
+        bottom: max(56px, env(safe-area-inset-bottom) + 32px);
+    }
 }
 </style>
