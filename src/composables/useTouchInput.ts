@@ -6,6 +6,9 @@ type InputBridge = {
     keys: InputKeys;
     setYaw: (v: number) => void;
     getYaw: () => number;
+    setPitch: (v: number) => void;
+    getPitch: () => number;
+    toggleCameraMode: () => void;
     mouseSens: number;
 };
 
@@ -29,6 +32,7 @@ export function useTouchInput(opts: UseTouchOptions) {
     let joyCenter = { x: 0, y: 0 };
     let camTouchId: number | null = null;
     let camLastX = 0;
+    let camLastY = 0;
 
     // 冲刺切换状态（手机端点击切换，非按住）
     const dashActive = ref(false);
@@ -90,14 +94,18 @@ export function useTouchInput(opts: UseTouchOptions) {
         const t = e.changedTouches[0];
         camTouchId = t.identifier;
         camLastX = t.clientX;
+        camLastY = t.clientY;
     }
     function onCameraMove(e: TouchEvent) {
         e.preventDefault();
         for (const t of Array.from(e.changedTouches)) {
             if (t.identifier !== camTouchId) continue;
             const dx = t.clientX - camLastX;
+            const dy = t.clientY - camLastY;
             camLastX = t.clientX;
+            camLastY = t.clientY;
             input.setYaw(input.getYaw() - dx * MOUSE_SENS * 1.5);
+            input.setPitch(input.getPitch() - dy * MOUSE_SENS * 1.5);
         }
     }
     function onCameraEnd(e: TouchEvent) {
@@ -166,6 +174,7 @@ export function useTouchInput(opts: UseTouchOptions) {
         toggleDash,
         dashActive,
         resetDash,
+        toggleCameraMode: input.toggleCameraMode,
         onPauseTouch,
     };
 }

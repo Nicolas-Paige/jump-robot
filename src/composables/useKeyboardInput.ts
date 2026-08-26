@@ -7,6 +7,9 @@ type InputBridge = {
     keys: InputKeys;
     setYaw: (v: number) => void;
     getYaw: () => number;
+    setPitch: (v: number) => void;
+    getPitch: () => number;
+    toggleCameraMode: () => void;
     mouseSens: number;
 };
 
@@ -37,6 +40,7 @@ export function useKeyboardInput(opts: UseKeyboardOptions) {
         else if (k === 's') input.keys.s = true;
         else if (k === 'd') input.keys.d = true;
         else if (k === ' ') { input.keys.space = true; e.preventDefault(); }
+        else if (k === 'v') input.toggleCameraMode();
         if (e.key === 'Shift') input.keys.shift = true;
     };
 
@@ -68,6 +72,7 @@ export function useKeyboardInput(opts: UseKeyboardOptions) {
     const onMouseMove = (e: MouseEvent) => {
         if (document.pointerLockElement === document.body || document.pointerLockElement === canvas.value) {
             input.setYaw(input.getYaw() - e.movementX * MOUSE_SENS);
+            input.setPitch(input.getPitch() - e.movementY * MOUSE_SENS);
         }
     };
 

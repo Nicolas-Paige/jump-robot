@@ -6,8 +6,12 @@ export type Language = 'zh' | 'en';
 const translations = {
     // StartOverlay
     startHint: {
-        zh: '往上跳！随机平台不断生成，看你能跳多高\nWASD 移动 | Shift 冲刺 | 空格跳跃 | 鼠标转视角 | ESC / P 暂停\n冲刺时跳跃更高更远，岩浆会从下方缓慢追上来，碰到就死',
-        en: 'Jump up! Random platforms keep generating, see how high you can go\nWASD move | Shift dash | Space jump | Mouse view | ESC / P pause\nDash + jump goes higher and farther, lava rises from below, touch it and die',
+        zh: '往上跳！随机平台不断生成，看你能跳多高\nWASD 移动 | Shift 冲刺 | 空格跳跃 | 鼠标转视角 | V 切换视角 | ESC / P 暂停\n冲刺时跳跃更高更远，岩浆会从下方缓慢追上来，碰到就死',
+        en: 'Jump up! Random platforms keep generating, see how high you can go\nWASD move | Shift dash | Space jump | Mouse view | V toggle view | ESC / P pause\nDash + jump goes higher and farther, lava rises from below, touch it and die',
+    },
+    startHintTouch: {
+        zh: '往上跳！随机平台不断生成，看你能跳多高\n左半屏按住拖动摇杆移动 | 右半屏滑动转视角 | 「跳」按钮跳跃 | 「冲刺」点按切换 | 👁 切换视角 | ‖ 暂停\n冲刺时跳跃更高更远，岩浆会从下方缓慢追上来，碰到就死',
+        en: 'Jump up! Random platforms keep generating, see how high you can go\nLeft half drag joystick to move | Right half drag to view | Jump button | Dash toggle | 👁 toggle view | ‖ pause\nDash + jump goes higher and farther, lava rises from below, touch it and die',
     },
     startBtn: { zh: '开始游戏', en: 'Start Game' },
     loadingFailed: { zh: '加载失败，点击重试', en: 'Load failed, tap to retry' },
@@ -15,8 +19,8 @@ const translations = {
 
     // Hud
     keyboardTip: {
-        zh: '点击锁定鼠标 | WASD移动 | Shift冲刺 | 空格跳跃 | 鼠标转视角 | ESC/P 暂停 | 往上跳，别被岩浆追上',
-        en: 'Click to lock mouse | WASD move | Shift dash | Space jump | Mouse view | ESC/P pause | Jump up, don\'t get caught by lava',
+        zh: '点击锁定鼠标 | WASD移动 | Shift冲刺 | 空格跳跃 | 鼠标转视角 | V切换视角 | ESC/P暂停 | 往上跳，别被岩浆追上',
+        en: 'Click to lock mouse | WASD move | Shift dash | Space jump | Mouse view | V toggle view | ESC/P pause | Jump up, don\'t get caught by lava',
     },
     layerUnit: { zh: '层', en: 'Layer' },
     best: { zh: '最高：', en: 'Best: ' },

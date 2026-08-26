@@ -31,12 +31,13 @@
 - **Minecraft 风格像素材质**：平台按高度分段（草 → 泥 → 石 → 高山裸岩 → 雪线），每段使用 canvas 程序化生成的 16×16 像素纹理（NearestFilter 硬边像素）
 - **视线遮挡处理**：相机与玩家之间的平台自动半透明化，避免视野被挡
 - **冲刺跳跃**：Shift 冲刺时跳跃，跳得更高更远，是冲层关键
+- **第一 / 第三人称切换**：按 `V` 键（PC）或点 👁 按钮（移动端）切换视角；第一人称可上下左右自由观察，机器人模型自动隐藏
 - **岩浆追击**：底部岩浆缓慢上升，碰到即死，迫使玩家持续向上（详见 [岩浆系统](#岩浆系统)）
 - **死亡菜单**：被岩浆烧死后弹出菜单，可选择重新开始或退出游戏
 - **背景音乐**：进入游戏自动播放，退出游戏自动暂停（循环播放）
-- **设置面板**：暂停菜单中可调节音量
+- **设置面板**：暂停菜单中可调节音量、切换语言
 - **层数记录**：实时显示当前层与历史最高层
-- **移动端适配**：自动检测触控设备，提供虚拟摇杆 / 跳跃 / 冲刺 / 暂停按钮，竖屏旋转提示
+- **移动端适配**：自动检测触控设备，提供动态浮动摇杆 / 跳跃 / 冲刺切换 / 视角切换 / 暂停按钮，竖屏旋转提示
 
 ## 如何运行
 
@@ -79,7 +80,8 @@ npm run preview
 | `W` / `A` / `S` / `D` | 前后左右移动 |
 | `Shift` | 冲刺（移动速度提升，跳跃力增强） |
 | `Space` | 跳跃 |
-| 鼠标移动 | 转动视角（点击页面锁定鼠标） |
+| 鼠标移动 | 转动视角（点击页面锁定鼠标，支持上下左右） |
+| `V` | 切换第一人称 / 第三人称视角 |
 | `ESC` | 打开 / 关闭暂停菜单 |
 | `P` | 打开 / 关闭暂停菜单 |
 
@@ -87,10 +89,11 @@ npm run preview
 
 | 操作 | 功能 |
 | --- | --- |
-| 左下角虚拟摇杆 | 8 方向移动（含死区） |
-| 右半屏拖拽 | 转动视角 |
+| 左半屏任意位置按住拖动 | 动态浮动摇杆（8 方向移动，含死区），手指在哪摇杆就在哪 |
+| 右半屏拖拽 | 转动视角（支持上下左右） |
 | 右下「跳」按钮 | 跳跃 |
-| 「冲刺」按钮 | 按住冲刺（配合跳跃可冲刺跳） |
+| 「冲刺」按钮 | 点按切换冲刺状态（开启时按钮高亮，配合跳跃可冲刺跳） |
+| 右上「👁」按钮 | 切换第一人称 / 第三人称视角 |
 | 右上「‖」按钮 | 暂停 / 继续游戏 |
 
 **玩法要点**：冲刺时跳跃能跳得更高更远，是登上高层的核心技巧。掉出平台边缘会被拉回第 0 层中心继续游戏；但底部岩浆会持续上升，一旦脚底低于岩浆面即判定死亡，弹出菜单等待选择。因此要尽量保持向上，别被岩浆追上。
@@ -101,6 +104,9 @@ npm run preview
 
 - **设备检测**：`src/composables/useTouchInput.ts` 通过 `('ontouchstart' in window) || (navigator.maxTouchPoints > 0)` 判断触控设备
 - **横屏处理**：Web 无法强制锁屏，采用遮罩提示方案。竖屏时全屏显示"请横屏使用"并带旋转动画，转成横屏后自动消失进入游戏
+- **动态浮动摇杆**：左半屏任意位置按下即生成摇杆，手指在哪摇杆中心就在哪，松开消失；不再固定左下角，避免遮挡
+- **冲刺切换**：冲刺按钮改为点按切换式（非按住），开启时按钮红色高亮，方便配合跳跃操作
+- **视角切换**：右上 👁 按钮切换第一人称 / 第三人称
 - **触控 UI**：仅在触控设备渲染，由 `TouchControls.vue` 实现，通过 `gameActive` prop 控制摇杆/按钮显示，`isPortrait` ref 控制旋转提示
 - **性能优化**：移动端自动关闭抗锯齿、降低 pixelRatio 上限至 1.5、阴影分辨率降至 1024
 
@@ -182,11 +188,19 @@ jump-robot/
 │   ├── styles.css              # 全局样式
 │   ├── shims.d.ts              # TS 模块声明（.glb / .mp4 等）
 │   ├── game/                   # 引擎层（纯 TS，无 Vue 依赖，可独立复用）
-│   │   ├── constants.ts        # 所有常量 + MC 调色板
-│   │   ├── types.ts            # Platform / InputKeys / GamePhase 等类型
+│   │   ├── constants.ts        # 所有常量 + MC 调色板 + 第一人称参数
+│   │   ├── types.ts            # Platform / InputKeys / GamePhase / CameraMode 等类型
 │   │   ├── textures.ts         # 像素纹理生成
 │   │   ├── PlatformSystem.ts   # 平台生成 / 管理 / 落地检测 / 视线遮挡
-│   │   └── LavaSystem.ts       # 岩浆着色器 / 上升 / 死亡检测
+│   │   ├── LavaSystem.ts       # 岩浆着色器 / 上升 / 死亡检测
+│   │   ├── modes/              # 游戏模式（经典 / 地狱）
+│   │   │   ├── types.ts        # GameMode 接口定义
+│   │   │   ├── registry.ts     # 模式注册表
+│   │   │   ├── classic.mode.ts # 经典模式
+│   │   │   └── inferno.mode.ts # 地狱模式
+│   │   └── platforms/          # 平台生成器
+│   │       ├── types.ts        # 平台类型与行为定义
+│   │       └── generators/     # 经典生成器 / 混合生成器（移动+消失平台）
 │   ├── composables/            # Vue 组合式函数
 │   │   ├── useGame.ts          # 主引擎：场景 / 模型 / 主循环 / 控制 API
 │   │   ├── useI18n.ts          # 国际化（中英文切换 + localStorage 持久化）
@@ -234,13 +248,16 @@ jump-robot/
 | `PLATFORMS_PER_LAYER` | `4` | 每层平台数量 |
 | `MOVE_SPEED` | `8` | 玩家移动速度 |
 | `RUN_SPEED_MULTIPLIER` | `1.6` | 冲刺速度倍率 |
-| `DASH_JUMP_MULTIPLIER` | `1.5` | 冲刺跳跃力倍率 |
+| `DASH_JUMP_MULTIPLIER` | `1.2` | 冲刺跳跃力倍率 |
 | `GRAVITY` | `-25` | 重力加速度 |
 | `JUMP_POWER` | `13` | 普通跳跃力 |
 | `MOUSE_SENS` | `0.002` | 鼠标 / 触控拖拽转视角灵敏度 |
-| `CAM_DIST` | `9` | 相机与玩家的水平距离 |
-| `CAM_HEIGHT` | `4` | 相机相对于玩家的高度偏移 |
-| `CAM_SMOOTH` | `0.12` | 相机跟随平滑系数 |
+| `CAM_DIST` | `9` | 第三人称相机与玩家的水平距离 |
+| `CAM_HEIGHT` | `4` | 第三人称相机相对于玩家的高度偏移 |
+| `CAM_SMOOTH` | `0.12` | 第三人称相机跟随平滑系数 |
+| `FP_CAMERA_HEIGHT` | `1.5` | 第一人称相机相对于玩家脚部的高度 |
+| `PITCH_MIN` | `-π/3` | 第一人称最低俯视角（-60°） |
+| `PITCH_MAX` | `π/3` | 第一人称最高仰视角（+60°） |
 | `LAVA_SIZE` | `100` | 岩浆平面边长 |
 | `LAVA_RISE_SPEED` | `0.8` | 岩浆每秒上升速度 |
 | `LAVA_INITIAL_Y` | `-8` | 岩浆起始高度（低于第 0 层） |
@@ -302,12 +319,13 @@ A 3D jumping mini-game built with Three.js + Vue 3. Control a robot to jump upwa
 - **Minecraft-style pixel textures**: Platforms are segmented by height (grass → dirt → stone → darkstone → snow), each segment uses a canvas-generated 16×16 pixel texture (NearestFilter for hard pixel edges)
 - **Line-of-sight occlusion**: Platforms between the camera and the player become semi-transparent to avoid blocking the view
 - **Dash jump**: Jumping while dashing with Shift makes you jump higher and farther, which is key to climbing layers
+- **First / Third person toggle**: Press `V` (PC) or tap the 👁 button (mobile) to switch camera views; first-person allows free look up/down/left/right, robot model auto-hides
 - **Lava chase**: Bottom lava slowly rises and kills on contact, forcing the player to keep climbing (see [Lava System](#lava-system))
 - **Death menu**: A menu pops up after being burned by lava, offering options to restart or quit the game
 - **Background music**: Automatically plays when entering the game, pauses when exiting (loops)
-- **Settings panel**: Adjust volume from the pause menu
+- **Settings panel**: Adjust volume and toggle language from the pause menu
 - **Layer tracking**: Real-time display of current layer and historical highest layer
-- **Mobile adaptation**: Auto-detects touch devices, provides virtual joystick / jump / dash / pause buttons, portrait orientation hint
+- **Mobile adaptation**: Auto-detects touch devices, provides dynamic floating joystick / jump / dash toggle / view toggle / pause buttons, portrait orientation hint
 
 ## How to Run
 
@@ -350,7 +368,8 @@ npm run preview
 | `W` / `A` / `S` / `D` | Move forward / left / back / right |
 | `Shift` | Dash (increased movement speed and jump force) |
 | `Space` | Jump |
-| Mouse movement | Rotate view (click the page to lock the pointer) |
+| Mouse movement | Rotate view (click the page to lock the pointer, supports look up/down) |
+| `V` | Toggle first-person / third-person view |
 | `ESC` | Open / close the pause menu |
 | `P` | Open / close the pause menu |
 
@@ -358,10 +377,11 @@ npm run preview
 
 | Action | Function |
 | --- | --- |
-| Bottom-left virtual joystick | 8-directional movement (with dead zone) |
-| Right-half screen drag | Rotate view |
+| Tap & drag anywhere on left half | Dynamic floating joystick (8-directional movement with dead zone), appears where your finger touches |
+| Right-half screen drag | Rotate view (supports look up/down) |
 | Bottom-right "Jump" button | Jump |
-| "Dash" button | Hold to dash (combined with jump for dash jump) |
+| "Dash" button | Tap to toggle dash on/off (highlighted when active, combine with jump for dash jump) |
+| Top-right "👁" button | Toggle first-person / third-person view |
 | Top-right "‖" button | Pause / resume game |
 
 **Gameplay tips**: Jumping while dashing lets you jump higher and farther — the core skill for reaching higher layers. Falling off the edge of platforms will pull you back to the center of layer 0 to continue; however, the bottom lava keeps rising, and once your feet drop below the lava surface, you die and a menu appears for your choice. Keep climbing upward and don't get caught.
@@ -372,6 +392,9 @@ npm run preview
 
 - **Device detection**: `src/composables/useTouchInput.ts` detects touch devices via `('ontouchstart' in window) || (navigator.maxTouchPoints > 0)`
 - **Orientation handling**: Web cannot force lock orientation, so a mask prompt is used. In portrait, a full-screen "Please use landscape" with rotation animation is shown; it disappears automatically when rotated to landscape
+- **Dynamic floating joystick**: Tap anywhere on the left half to spawn the joystick at your finger position, disappears on release; no longer fixed to bottom-left, avoids blocking the view
+- **Dash toggle**: Dash button is tap-to-toggle (not hold), highlighted in red when active, easier to combine with jump
+- **View toggle**: Top-right 👁 button toggles first-person / third-person
 - **Touch UI**: Only rendered on touch devices, implemented by `TouchControls.vue`. Joystick/button visibility is controlled by `gameActive` prop; rotation hint is controlled by `isPortrait` ref
 - **Performance optimizations**: Mobile auto-disables antialiasing, lowers pixelRatio cap to 1.5, and reduces shadow map resolution to 1024
 
@@ -453,11 +476,19 @@ jump-robot/
 │   ├── styles.css              # Global styles
 │   ├── shims.d.ts              # TS module declarations (.glb / .mp4, etc.)
 │   ├── game/                   # Engine layer (pure TS, no Vue dependency, independently reusable)
-│   │   ├── constants.ts        # All constants + MC palette
-│   │   ├── types.ts            # Platform / InputKeys / GamePhase types
+│   │   ├── constants.ts        # All constants + MC palette + first-person params
+│   │   ├── types.ts            # Platform / InputKeys / GamePhase / CameraMode types
 │   │   ├── textures.ts         # Pixel texture generation
 │   │   ├── PlatformSystem.ts   # Platform generation / management / landing detection / line-of-sight occlusion
-│   │   └── LavaSystem.ts       # Lava shader / rising / death detection
+│   │   ├── LavaSystem.ts       # Lava shader / rising / death detection
+│   │   ├── modes/              # Game modes (Classic / Inferno)
+│   │   │   ├── types.ts        # GameMode interface definition
+│   │   │   ├── registry.ts     # Mode registry
+│   │   │   ├── classic.mode.ts # Classic mode
+│   │   │   └── inferno.mode.ts # Inferno mode
+│   │   └── platforms/          # Platform generators
+│   │       ├── types.ts        # Platform type & behavior definitions
+│   │       └── generators/     # Classic generator / Mixed generator (moving + disappearing platforms)
 │   ├── composables/            # Vue composables
 │   │   ├── useGame.ts          # Main engine: scene / model / main loop / control API
 │   │   ├── useI18n.ts          # Internationalization (zh/en toggle + localStorage persistence)
@@ -505,13 +536,16 @@ The core parameters in the game are defined in [src/game/constants.ts](file:///d
 | `PLATFORMS_PER_LAYER` | `4` | Number of platforms per layer |
 | `MOVE_SPEED` | `8` | Player movement speed |
 | `RUN_SPEED_MULTIPLIER` | `1.6` | Dash speed multiplier |
-| `DASH_JUMP_MULTIPLIER` | `1.5` | Dash jump force multiplier |
+| `DASH_JUMP_MULTIPLIER` | `1.2` | Dash jump force multiplier |
 | `GRAVITY` | `-25` | Gravity acceleration |
 | `JUMP_POWER` | `13` | Normal jump force |
 | `MOUSE_SENS` | `0.002` | Mouse / touch drag view rotation sensitivity |
-| `CAM_DIST` | `9` | Horizontal distance from camera to player |
-| `CAM_HEIGHT` | `4` | Camera height offset relative to player |
-| `CAM_SMOOTH` | `0.12` | Camera follow smoothing factor |
+| `CAM_DIST` | `9` | Third-person horizontal distance from camera to player |
+| `CAM_HEIGHT` | `4` | Third-person camera height offset relative to player |
+| `CAM_SMOOTH` | `0.12` | Third-person camera follow smoothing factor |
+| `FP_CAMERA_HEIGHT` | `1.5` | First-person camera height relative to player feet |
+| `PITCH_MIN` | `-π/3` | First-person minimum look-down angle (-60°) |
+| `PITCH_MAX` | `π/3` | First-person maximum look-up angle (+60°) |
 | `LAVA_SIZE` | `100` | Lava plane edge length |
 | `LAVA_RISE_SPEED` | `0.8` | Lava rise speed per second |
 | `LAVA_INITIAL_Y` | `-8` | Lava starting height (below layer 0) |

@@ -16,6 +16,7 @@ const props = defineProps<{
         releaseJump: (e: TouchEvent) => void;
         toggleDash: (e: TouchEvent) => void;
         dashActive: { value: boolean };
+        toggleCameraMode: (e: TouchEvent) => void;
         onPauseTouch: (e: TouchEvent) => void;
     };
 }>();
@@ -108,6 +109,9 @@ function joyLayerEnd(e: TouchEvent) {
             @touchend="props.handlers.releaseJump"
             @touchcancel="props.handlers.releaseJump"
         >{{ tr('jump') }}</button>
+        <button class="touch-btn" id="btnCameraMode"
+            @touchstart="props.handlers.toggleCameraMode"
+        >👁</button>
         <button class="touch-btn" id="btnPauseTouch"
             @touchstart="props.handlers.onPauseTouch"
         >‖</button>
@@ -242,6 +246,14 @@ function joyLayerEnd(e: TouchEvent) {
     box-shadow: 0 0 16px rgba(255, 80, 80, 0.7);
     transform: scale(0.95);
 }
+#btnCameraMode {
+    top: max(15px, env(safe-area-inset-top) + 10px);
+    right: max(75px, env(safe-area-inset-right) + 70px);
+    width: 50px;
+    height: 50px;
+    font-size: 20px;
+    background: rgba(0, 0, 0, 0.5);
+}
 #btnPauseTouch {
     top: max(15px, env(safe-area-inset-top) + 10px);
     right: max(15px, env(safe-area-inset-right) + 10px);
@@ -287,6 +299,13 @@ function joyLayerEnd(e: TouchEvent) {
         right: max(102px, env(safe-area-inset-right) + 88px);
         bottom: max(72px, env(safe-area-inset-bottom) + 44px);
         font-size: 12px;
+    }
+    #btnCameraMode {
+        width: 42px;
+        height: 42px;
+        font-size: 18px;
+        top: max(10px, env(safe-area-inset-top) + 6px);
+        right: max(62px, env(safe-area-inset-right) + 58px);
     }
     #btnPauseTouch {
         width: 42px;

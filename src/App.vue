@@ -98,6 +98,7 @@ const showGameUI = computed(() => game.phase.value !== 'idle');
             v-if="game.phase.value === 'idle'"
             :loading-progress="game.loadingProgress.value"
             :load-error="game.loadError.value"
+            :is-touch-device="IS_TOUCH_DEVICE"
             @start="onStart"
             @settings="onSettings"
         />

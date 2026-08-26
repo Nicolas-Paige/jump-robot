@@ -4,12 +4,13 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import {
     MOUSE_SENS, RUN_SPEED_MULTIPLIER, DASH_JUMP_MULTIPLIER,
     CAM_DIST, CAM_HEIGHT, CAM_SMOOTH,
+    FP_CAMERA_HEIGHT, PITCH_MIN, PITCH_MAX,
     DEATH_DURATION,
 } from '../game/constants';
 import { PlatformSystem } from '../game/PlatformSystem';
 import { LavaSystem } from '../game/LavaSystem';
 import { disposePixelTextures } from '../game/textures';
-import type { GamePhase, InputKeys, DeathMaterialRecord } from '../game/types';
+import type { GamePhase, InputKeys, DeathMaterialRecord, CameraMode } from '../game/types';
 import type { GameMode } from '../game/modes/types';
 import { DEFAULT_MODE } from '../game/modes/registry';
 
@@ -44,6 +45,7 @@ export function useGame(options: UseGameOptions) {
     // ===== 游戏内部状态（普通变量，不响应式） =====
     const keys: InputKeys = { w: false, a: false, s: false, d: false, space: false, shift: false };
     let yaw = 0;
+    let pitch = 0;
     let velY = 0;
     let isGrounded = true;
     let mixer: THREE.AnimationMixer | null = null;
@@ -64,6 +66,9 @@ export function useGame(options: UseGameOptions) {
     // 当前模式
     const currentMode = shallowRef<GameMode>(DEFAULT_MODE);
 
+    // 相机视角模式（响应式，给UI显示用）
+    const cameraMode = ref<CameraMode>('thirdPerson');
+
     // 系统
     let platformSystem: PlatformSystem | null = null;
     let lavaSystem: LavaSystem | null = null;
@@ -76,6 +81,15 @@ export function useGame(options: UseGameOptions) {
         keys,
         setYaw: (v: number) => { yaw = v; },
         getYaw: () => yaw,
+        setPitch: (v: number) => { pitch = Math.max(PITCH_MIN, Math.min(PITCH_MAX, v)); },
+        getPitch: () => pitch,
+        toggleCameraMode: () => {
+            cameraMode.value = cameraMode.value === 'firstPerson' ? 'thirdPerson' : 'firstPerson';
+            pitch = 0;  // 切换时重置俯仰角，避免角度异常
+            if (playerGroup.value) {
+                playerGroup.value.visible = cameraMode.value === 'thirdPerson' && modelLoaded;
+            }
+        },
         mouseSens: MOUSE_SENS,
     };
 
@@ -152,7 +166,7 @@ export function useGame(options: UseGameOptions) {
                 model.castShadow = true;
                 const pg = playerGroup.value!;
                 pg.add(model);
-                pg.visible = true;
+                pg.visible = cameraMode.value === 'thirdPerson';
 
                 mixer = new THREE.AnimationMixer(model);
                 const animations = gltf.animations;
@@ -446,19 +460,28 @@ export function useGame(options: UseGameOptions) {
             lavaY: lavaSystem!.y,
         });
 
+        // ===== 相机：第一人称 / 第三人称 =====
+        if (cameraMode.value === 'firstPerson') {
+            // 第一人称：相机在玩家头部，用 quaternion 显式设置朝向
+            // yaw + π 是为了和第三人称屏幕方向对齐（第三人称相机在玩家前方看脸）
+            camera.value!.position.set(pg.position.x, pg.position.y + FP_CAMERA_HEIGHT, pg.position.z);
+            const euler = new THREE.Euler(pitch, yaw + Math.PI, 0, 'YXZ');
+            camera.value!.quaternion.setFromEuler(euler);
+        } else {
+            // 第三人称：跟随相机
+            const targetCamX = pg.position.x - Math.sin(yaw) * CAM_DIST;
+            const targetCamZ = pg.position.z - Math.cos(yaw) * CAM_DIST;
+            const targetCamY = pg.position.y + CAM_HEIGHT;
+            camera.value!.position.x += (targetCamX - camera.value!.position.x) * CAM_SMOOTH;
+            camera.value!.position.z += (targetCamZ - camera.value!.position.z) * CAM_SMOOTH;
+            camera.value!.position.y += (targetCamY - camera.value!.position.y) * CAM_SMOOTH;
+            camera.value!.lookAt(pg.position.x, pg.position.y + 1, pg.position.z);
+        }
+
         // 视线遮挡
         const camPos = camera.value!.position.clone();
         const playerPos = new THREE.Vector3(pg.position.x, pg.position.y + 1, pg.position.z);
         platformSystem!.updateOpacity(camPos, playerPos);
-
-        // 相机跟随
-        const targetCamX = pg.position.x - Math.sin(yaw) * CAM_DIST;
-        const targetCamZ = pg.position.z - Math.cos(yaw) * CAM_DIST;
-        const targetCamY = pg.position.y + CAM_HEIGHT;
-        camera.value!.position.x += (targetCamX - camera.value!.position.x) * CAM_SMOOTH;
-        camera.value!.position.z += (targetCamZ - camera.value!.position.z) * CAM_SMOOTH;
-        camera.value!.position.y += (targetCamY - camera.value!.position.y) * CAM_SMOOTH;
-        camera.value!.lookAt(pg.position.x, pg.position.y + 1, pg.position.z);
 
         renderer.value!.render(scene.value!, camera.value!);
     }
@@ -530,7 +553,7 @@ export function useGame(options: UseGameOptions) {
         lavaSystem!.setEnabled(mode.lava.enabled);
         deathTimer = 0;
         deathPending = false;
-        pg.visible = modelLoaded;
+        pg.visible = modelLoaded && cameraMode.value === 'thirdPerson';
 
         if (deathModel) deathModel.rotation.set(0, 0, 0);
         deathMaterials.forEach(d => {
@@ -581,7 +604,7 @@ export function useGame(options: UseGameOptions) {
     return {
         // 状态
         phase, currentLayer, bestLayer, volume,
-        loadingProgress, loadError, currentMode,
+        loadingProgress, loadError, currentMode, cameraMode,
         // 引擎控制
         initScene, startGame, pauseGame, resumeGame,
         openSettings, closeSettings,

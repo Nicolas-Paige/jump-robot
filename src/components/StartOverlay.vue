@@ -7,6 +7,7 @@ import type { GameMode } from '../game/modes/types';
 const props = defineProps<{
     loadingProgress: number;
     loadError: string | null;
+    isTouchDevice: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -18,6 +19,11 @@ const { tr } = useI18n();
 
 const started = ref(false);
 const selectedModeId = ref(MODES[0]?.id ?? 'classic');
+
+// 根据设备选择操作提示文案
+const hintText = computed(() =>
+    props.isTouchDevice ? tr('startHintTouch') : tr('startHint')
+);
 
 // 加载失败时重置 started，允许用户重试
 watch(() => props.loadError, (err) => {
@@ -48,7 +54,7 @@ function onStart() {
 
         <div class="overlay-inner">
             <h1>Jump Robot</h1>
-            <p class="hint-text" v-html="tr('startHint').replace(/\n/g, '<br>')"></p>
+            <p class="hint-text" v-html="hintText.replace(/\n/g, '<br>')"></p>
 
             <!-- 模式选择 -->
             <div v-if="MODES.length > 1" class="mode-cards">

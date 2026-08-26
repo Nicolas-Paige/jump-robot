@@ -46,6 +46,9 @@ export type GamePhase =
     | 'dying'        // 死亡动画进行中
     | 'dead';        // 死亡菜单
 
+// 相机视角模式
+export type CameraMode = 'firstPerson' | 'thirdPerson';
+
 // 玩家死亡材质记录（用于变红动画）
 export interface DeathMaterialRecord {
     mat: THREE.MeshStandardMaterial;

@@ -20,6 +20,11 @@ export const CAM_DIST = 9;
 export const CAM_HEIGHT = 4;
 export const CAM_SMOOTH = 0.12;
 
+// 第一人称
+export const FP_CAMERA_HEIGHT = 1.5;   // 第一人称相机相对于玩家脚部的高度
+export const PITCH_MIN = -Math.PI / 3;  // 最低俯视角（-60°）
+export const PITCH_MAX = Math.PI / 3;   // 最高仰视角（+60°）
+
 // 岩浆
 export const LAVA_SIZE = 100;
 export const LAVA_RISE_SPEED = 0.8;
