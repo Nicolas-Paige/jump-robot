@@ -58,6 +58,9 @@ export function useGame(options: UseGameOptions) {
     let deathTimer = 0;
     let deathPending = false;
 
+    // 当前脚下平台（用于跟随 y 轴移动平台）
+    let currentGroundedPlatform: import('../game/types').Platform | null = null;
+
     // 当前模式
     const currentMode = shallowRef<GameMode>(DEFAULT_MODE);
 
@@ -351,6 +354,7 @@ export function useGame(options: UseGameOptions) {
                 pg.position.y = landed.topY;
                 velY = 0;
                 isGrounded = true;
+                currentGroundedPlatform = landed;
                 if (landed.layer > currentLayer.value) {
                     currentLayer.value = landed.layer;
                     if (landed.layer > bestLayer.value) bestLayer.value = landed.layer;
@@ -361,6 +365,7 @@ export function useGame(options: UseGameOptions) {
                     case 'bouncy':
                         velY = landed.behavior?.bouncePower ?? 20;
                         isGrounded = false;
+                        currentGroundedPlatform = null;
                         break;
                     case 'disappearing':
                         if (landed.disappearTimer <= 0) {
@@ -371,6 +376,7 @@ export function useGame(options: UseGameOptions) {
                         // 立即消失
                         platformSystem!.removePlatform(landed);
                         isGrounded = false;
+                        currentGroundedPlatform = null;
                         break;
                 }
 
@@ -384,9 +390,30 @@ export function useGame(options: UseGameOptions) {
                 });
             } else {
                 isGrounded = false;
+                currentGroundedPlatform = null;
             }
         } else {
             isGrounded = false;
+            currentGroundedPlatform = null;
+        }
+
+        // 站在移动平台上时跟随平台移动（解决 velY=0 时穿越检测不触发的问题）
+        if (isGrounded && currentGroundedPlatform) {
+            // 平台被移除或不在 xz 范围内时脱开
+            if (platformSystem!.platforms.indexOf(currentGroundedPlatform) < 0) {
+                currentGroundedPlatform = null;
+                isGrounded = false;
+            } else {
+                const p = currentGroundedPlatform;
+                if (pg.position.x < p.minX - 0.5 || pg.position.x > p.maxX + 0.5 ||
+                    pg.position.z < p.minZ - 0.5 || pg.position.z > p.maxZ + 0.5) {
+                    currentGroundedPlatform = null;
+                    isGrounded = false;
+                } else {
+                    // 吸附到平台顶部
+                    pg.position.y = p.topY;
+                }
+            }
         }
 
         if (isGrounded) {
@@ -492,6 +519,7 @@ export function useGame(options: UseGameOptions) {
         velY = 0;
         isGrounded = true;
         yaw = 0;
+        currentGroundedPlatform = null;
 
         platformSystem!.clear();
         platformSystem!.setGenerator(mode.createGenerator(), mode);
