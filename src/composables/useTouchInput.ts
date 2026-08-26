@@ -1,4 +1,4 @@
-import { onMounted, onUnmounted } from 'vue';
+import { ref, onMounted, onUnmounted } from 'vue';
 import { MOUSE_SENS } from '../game/constants';
 import type { InputKeys } from '../game/types';
 
@@ -30,6 +30,9 @@ export function useTouchInput(opts: UseTouchOptions) {
     let camTouchId: number | null = null;
     let camLastX = 0;
 
+    // 冲刺切换状态（手机端点击切换，非按住）
+    const dashActive = ref(false);
+
     const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
 
     function applyJoystick(dx: number, dy: number) {
@@ -44,17 +47,16 @@ export function useTouchInput(opts: UseTouchOptions) {
         if (nx > 0.4) input.keys.d = true;
     }
 
-    // 摇杆事件处理
-    function onJoystickStart(e: TouchEvent, thumb: HTMLElement) {
+    // 摇杆事件处理（动态浮动摇杆：中心由触摸点决定）
+    function onJoystickStart(e: TouchEvent, centerX: number, centerY: number) {
         e.preventDefault();
         if (joyTouchId !== null) return;
         const t = e.changedTouches[0];
         joyTouchId = t.identifier;
-        const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-        joyCenter = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+        joyCenter = { x: centerX, y: centerY };
     }
 
-    function onJoystickMove(e: TouchEvent, thumb: HTMLElement) {
+    function onJoystickMove(e: TouchEvent): { dx: number; dy: number } {
         e.preventDefault();
         for (const t of Array.from(e.changedTouches)) {
             if (t.identifier !== joyTouchId) continue;
@@ -65,18 +67,18 @@ export function useTouchInput(opts: UseTouchOptions) {
                 dx = dx / mag * JOY_RADIUS;
                 dy = dy / mag * JOY_RADIUS;
             }
-            thumb.style.transform = `translate(${dx}px, ${dy}px)`;
             applyJoystick(dx, dy);
+            return { dx, dy };
         }
+        return { dx: 0, dy: 0 };
     }
 
-    function onJoystickEnd(e: TouchEvent, thumb: HTMLElement) {
+    function onJoystickEnd(e: TouchEvent) {
         e.preventDefault();
         for (const t of Array.from(e.changedTouches)) {
             if (t.identifier === joyTouchId) {
                 joyTouchId = null;
                 input.keys.w = false; input.keys.a = false; input.keys.s = false; input.keys.d = false;
-                thumb.style.transform = 'translate(0, 0)';
             }
         }
     }
@@ -119,6 +121,19 @@ export function useTouchInput(opts: UseTouchOptions) {
         };
     }
 
+    // 冲刺切换（手机端：点击一次开启，再点一次关闭）
+    function toggleDash(e: TouchEvent) {
+        e.preventDefault();
+        dashActive.value = !dashActive.value;
+        input.keys.shift = dashActive.value as any;
+    }
+
+    // 重置冲刺状态（游戏结束/重启/退出时调用）
+    function resetDash() {
+        dashActive.value = false;
+        input.keys.shift = false as any;
+    }
+
     // 暂停按钮（暂停↔游戏中 互切，但死亡/死亡动画期间禁用）
     function onPauseTouch(e: TouchEvent) {
         e.preventDefault();
@@ -148,8 +163,9 @@ export function useTouchInput(opts: UseTouchOptions) {
         onCameraStart, onCameraMove, onCameraEnd,
         pressJump: pressButton('space'),
         releaseJump: releaseButton('space'),
-        pressDash: pressButton('shift'),
-        releaseDash: releaseButton('shift'),
+        toggleDash,
+        dashActive,
+        resetDash,
         onPauseTouch,
     };
 }

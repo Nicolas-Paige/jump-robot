@@ -6,16 +6,16 @@ const props = defineProps<{
     // 是否进入游戏（控制摇杆/按钮显示，旋转提示不受此影响）
     gameActive: boolean;
     handlers: {
-        onJoystickStart: (e: TouchEvent, thumb: HTMLElement) => void;
-        onJoystickMove: (e: TouchEvent, thumb: HTMLElement) => void;
-        onJoystickEnd: (e: TouchEvent, thumb: HTMLElement) => void;
+        onJoystickStart: (e: TouchEvent, centerX: number, centerY: number) => void;
+        onJoystickMove: (e: TouchEvent) => { dx: number; dy: number };
+        onJoystickEnd: (e: TouchEvent) => void;
         onCameraStart: (e: TouchEvent) => void;
         onCameraMove: (e: TouchEvent) => void;
         onCameraEnd: (e: TouchEvent) => void;
         pressJump: (e: TouchEvent) => void;
         releaseJump: (e: TouchEvent) => void;
-        pressDash: (e: TouchEvent) => void;
-        releaseDash: (e: TouchEvent) => void;
+        toggleDash: (e: TouchEvent) => void;
+        dashActive: { value: boolean };
         onPauseTouch: (e: TouchEvent) => void;
     };
 }>();
@@ -26,7 +26,10 @@ const emit = defineEmits<{
     pause: [];
 }>();
 
-const joystickThumb = ref<HTMLElement | null>(null);
+// ===== 动态浮动摇杆状态 =====
+const joystickActive = ref(false);
+const joystickCenter = ref({ x: 0, y: 0 });
+const joystickThumbOffset = ref({ x: 0, y: 0 });
 
 // 竖屏检测：响应式控制旋转提示
 const isPortrait = ref(false);
@@ -44,15 +47,25 @@ onUnmounted(() => {
     window.removeEventListener('orientationchange', updateOrientation);
 });
 
-// 适配 handlers（绑定 thumb）
-function joyStart(e: TouchEvent) {
-    if (joystickThumb.value) props.handlers.onJoystickStart(e, joystickThumb.value);
+// 左半屏触摸 → 在触摸点生成动态摇杆
+function joyLayerStart(e: TouchEvent) {
+    e.preventDefault();
+    const t = e.changedTouches[0];
+    joystickCenter.value = { x: t.clientX, y: t.clientY };
+    joystickThumbOffset.value = { x: 0, y: 0 };
+    joystickActive.value = true;
+    props.handlers.onJoystickStart(e, t.clientX, t.clientY);
 }
-function joyMove(e: TouchEvent) {
-    if (joystickThumb.value) props.handlers.onJoystickMove(e, joystickThumb.value);
+function joyLayerMove(e: TouchEvent) {
+    e.preventDefault();
+    const offset = props.handlers.onJoystickMove(e);
+    joystickThumbOffset.value = { x: offset.dx, y: offset.dy };
 }
-function joyEnd(e: TouchEvent) {
-    if (joystickThumb.value) props.handlers.onJoystickEnd(e, joystickThumb.value);
+function joyLayerEnd(e: TouchEvent) {
+    e.preventDefault();
+    props.handlers.onJoystickEnd(e);
+    joystickActive.value = false;
+    joystickThumbOffset.value = { x: 0, y: 0 };
 }
 </script>
 
@@ -66,24 +79,29 @@ function joyEnd(e: TouchEvent) {
 
     <!-- 触控控件（横屏 + 游戏中时显示） -->
     <div v-if="!isPortrait && gameActive" id="touchControls">
+        <!-- 左半屏：动态摇杆触摸层（任意位置按下生成摇杆） -->
+        <div id="joystickLayer"
+            @touchstart="joyLayerStart"
+            @touchmove="joyLayerMove"
+            @touchend="joyLayerEnd"
+            @touchcancel="joyLayerEnd"
+        />
+        <!-- 右半屏：相机拖拽 -->
         <div id="cameraLayer"
             @touchstart="props.handlers.onCameraStart"
             @touchmove="props.handlers.onCameraMove"
             @touchend="props.handlers.onCameraEnd"
             @touchcancel="props.handlers.onCameraEnd"
         />
-        <div id="joystick"
-            @touchstart="joyStart"
-            @touchmove="joyMove"
-            @touchend="joyEnd"
-            @touchcancel="joyEnd"
-        >
-            <div ref="joystickThumb" id="joystickThumb" />
+        <!-- 动态浮动摇杆（触摸时出现在手指位置） -->
+        <div v-if="joystickActive" id="joystick"
+            :style="{ left: joystickCenter.x + 'px', top: joystickCenter.y + 'px' }">
+            <div id="joystickThumb"
+                :style="{ transform: `translate(${joystickThumbOffset.x}px, ${joystickThumbOffset.y}px)` }" />
         </div>
         <button class="touch-btn" id="btnDash"
-            @touchstart="props.handlers.pressDash"
-            @touchend="props.handlers.releaseDash"
-            @touchcancel="props.handlers.releaseDash"
+            :class="{ active: props.handlers.dashActive.value }"
+            @touchstart="props.handlers.toggleDash"
         >{{ tr('dash') }}</button>
         <button class="touch-btn" id="btnJump"
             @touchstart="props.handlers.pressJump"
@@ -140,17 +158,34 @@ function joyEnd(e: TouchEvent) {
     -webkit-touch-callout: none;
 }
 
-/* 摇杆 —— left/bottom 使用 safe-area 防刘海/黑边遮挡 */
-#joystick {
+/* 左半屏：动态摇杆触摸层 */
+#joystickLayer {
     position: absolute;
-    left: max(30px, env(safe-area-inset-left) + 20px);
-    bottom: max(30px, env(safe-area-inset-bottom) + 20px);
+    top: 0;
+    left: 0;
+    width: 50%;
+    height: 100%;
+    background: transparent;
+}
+
+/* 动态浮动摇杆 —— 固定定位，中心对齐触摸点，pointer-events 穿透 */
+#joystick {
+    position: fixed;
     width: 130px;
     height: 130px;
+    margin-left: -65px;
+    margin-top: -65px;
     border-radius: 50%;
     background: rgba(255, 255, 255, 0.08);
     border: 2px solid rgba(255, 255, 255, 0.25);
     backdrop-filter: blur(4px);
+    pointer-events: none;
+    animation: joyFadeIn 0.15s ease-out;
+    z-index: 101;
+}
+@keyframes joyFadeIn {
+    from { opacity: 0; transform: scale(0.8); }
+    to { opacity: 1; transform: scale(1); }
 }
 #joystickThumb {
     position: absolute;
@@ -201,6 +236,12 @@ function joyEnd(e: TouchEvent) {
     font-size: 14px;
     background: rgba(255, 107, 107, 0.45);
 }
+#btnDash.active {
+    background: rgba(255, 60, 60, 0.8);
+    border-color: rgba(255, 200, 200, 0.9);
+    box-shadow: 0 0 16px rgba(255, 80, 80, 0.7);
+    transform: scale(0.95);
+}
 #btnPauseTouch {
     top: max(15px, env(safe-area-inset-top) + 10px);
     right: max(15px, env(safe-area-inset-right) + 10px);
@@ -225,8 +266,8 @@ function joyEnd(e: TouchEvent) {
     #joystick {
         width: 100px;
         height: 100px;
-        left: max(18px, env(safe-area-inset-left) + 12px);
-        bottom: max(18px, env(safe-area-inset-bottom) + 12px);
+        margin-left: -50px;
+        margin-top: -50px;
     }
     #joystickThumb {
         width: 44px;
@@ -261,6 +302,8 @@ function joyEnd(e: TouchEvent) {
     #joystick {
         width: 84px;
         height: 84px;
+        margin-left: -42px;
+        margin-top: -42px;
     }
     #joystickThumb {
         width: 38px;

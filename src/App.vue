@@ -57,6 +57,7 @@ const touchHandlers = useTouchInput({
 // ===== 开始游戏 =====
 async function onStart(mode: GameMode) {
     if (IS_TOUCH_DEVICE) document.body.classList.add('touch');
+    touchHandlers.resetDash();
     await nextTick();
     if (canvasRef.value) {
         game.initScene();
@@ -65,10 +66,10 @@ async function onStart(mode: GameMode) {
 }
 
 // ===== 菜单事件 =====
-function onRestart() { game.restartGame(); }
+function onRestart() { touchHandlers.resetDash(); game.restartGame(); }
 function onSettings() { game.openSettings(); }
 function onSettingsBack() { game.closeSettings(); }
-function onQuit() { game.quitGame(); }
+function onQuit() { touchHandlers.resetDash(); game.quitGame(); }
 function onVolumeUpdate(v: number) { game.setVolume(v); }
 
 // ===== 窗口适配 =====

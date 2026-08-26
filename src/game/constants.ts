@@ -11,7 +11,7 @@ export const PLATFORMS_PER_LAYER = 4;      // 每层平台数量
 export const MOUSE_SENS = 0.002;
 export const MOVE_SPEED = 8;
 export const RUN_SPEED_MULTIPLIER = 1.6;   // Shift 奔跑速度倍率
-export const DASH_JUMP_MULTIPLIER = 1.5;   // 奔跑时跳跃力倍率
+export const DASH_JUMP_MULTIPLIER = 1.2;   // 奔跑时跳跃力倍率
 export const GRAVITY = -25;
 export const JUMP_POWER = 13;
 
