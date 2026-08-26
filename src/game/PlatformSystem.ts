@@ -346,15 +346,23 @@ export class PlatformSystem {
         this.clearShards();
     }
 
-    // 落地检测：前后帧穿越法
+    // 落地检测：穿越法 + 绝对位置法（兼容 y 轴移动平台）
     tryLanding(prevFootY: number, newFootY: number, px: number, pz: number): Platform | null {
         let best: Platform | null = null;
         for (const p of this.platforms) {
+            const xHit = px >= p.minX - 0.3 && px <= p.maxX + 0.3;
+            const zHit = pz >= p.minZ - 0.3 && pz <= p.maxZ + 0.3;
+            if (!xHit || !zHit) continue;
+
+            // 方法1：穿越法（玩家脚从上方穿过到下方）
             if (prevFootY >= p.topY - 0.01 && newFootY <= p.topY + 0.01) {
-                if (px >= p.minX - 0.3 && px <= p.maxX + 0.3 &&
-                    pz >= p.minZ - 0.3 && pz <= p.maxZ + 0.3) {
-                    if (!best || p.topY > best.topY) best = p;
-                }
+                if (!best || p.topY > best.topY) best = p;
+                continue;
+            }
+            // 方法2：绝对位置法（y 轴移动平台——玩家脚在平台 topY 附近，且平台向上移动接近玩家）
+            const distToSurface = newFootY - p.topY;
+            if (distToSurface > -0.6 && distToSurface < 0.01) {
+                if (!best || p.topY > best.topY) best = p;
             }
         }
         return best;
