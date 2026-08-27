@@ -109,9 +109,6 @@ onUnmounted(() => {
             <button class="cs-confirm" @click="emit('confirm')">
                 立即出发
             </button>
-            <div class="cs-hint">
-                ← → 切换角色 · 滑动切换 · Enter 确认
-            </div>
         </div>
     </div>
 </template>
@@ -260,12 +257,6 @@ onUnmounted(() => {
     box-shadow: 0 12px 40px rgba(238, 90, 111, 0.6);
 }
 
-.cs-hint {
-    font-size: 12px;
-    color: #667;
-    text-align: center;
-}
-
 /* ===== 移动端适配 ===== */
 @media (max-width: 600px) {
     .cs-title { font-size: 18px; letter-spacing: 2px; }
@@ -274,7 +265,6 @@ onUnmounted(() => {
     .cs-arrow-right { right: 12px; }
     .cs-dots { margin-top: 120px; }
     .cs-confirm { font-size: 17px; padding: 14px 48px; min-width: 180px; }
-    .cs-hint { display: none; }
 }
 
 @media (max-height: 500px) {
