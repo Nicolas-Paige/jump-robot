@@ -4,6 +4,7 @@ import { useGame, IS_TOUCH_DEVICE } from './composables/useGame';
 import { useKeyboardInput } from './composables/useKeyboardInput';
 import { useTouchInput } from './composables/useTouchInput';
 import StartOverlay from './components/StartOverlay.vue';
+import CharacterSelect from './components/CharacterSelect.vue';
 import Hud from './components/Hud.vue';
 import EscMenu from './components/EscMenu.vue';
 import SettingsPanel from './components/SettingsPanel.vue';
@@ -54,15 +55,25 @@ const touchHandlers = useTouchInput({
     togglePause,
 });
 
-// ===== 开始游戏 =====
+// ===== 开始游戏 → 进入选人页面 =====
 async function onStart(mode: GameMode) {
     if (IS_TOUCH_DEVICE) document.body.classList.add('touch');
     touchHandlers.resetDash();
     await nextTick();
     if (canvasRef.value) {
         game.initScene();
-        game.startGame(mode);
+        game.enterCharacterSelect(mode);
     }
+}
+
+// ===== 选人页面确认 → 正式进入游戏 =====
+function onConfirmCharacter() {
+    game.confirmCharacter();
+}
+
+// ===== 选人页面返回 → 回到开始界面 =====
+function onBackFromSelect() {
+    game.quitGame();
 }
 
 // ===== 菜单事件 =====
@@ -84,7 +95,7 @@ onUnmounted(() => {
     window.removeEventListener('resize', onResize);
 });
 
-const showGameUI = computed(() => game.phase.value !== 'idle');
+const showGameUI = computed(() => !['idle', 'character-select'].includes(game.phase.value));
 </script>
 
 <template>
@@ -101,6 +112,18 @@ const showGameUI = computed(() => game.phase.value !== 'idle');
             :is-touch-device="IS_TOUCH_DEVICE"
             @start="onStart"
             @settings="onSettings"
+        />
+
+        <!-- 角色选择页面 -->
+        <CharacterSelect
+            v-if="game.phase.value === 'character-select'"
+            :character-index="game.characterIndex.value"
+            :loading-progress="game.loadingProgress.value"
+            :load-error="game.loadError.value"
+            @prev="game.switchCharacter(-1)"
+            @next="game.switchCharacter(1)"
+            @confirm="onConfirmCharacter"
+            @back="onBackFromSelect"
         />
 
         <!-- HUD（游戏中显示） -->

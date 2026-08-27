@@ -1,6 +1,6 @@
-# Jump Robot
+# Lava Leap
 
-一个基于 Three.js + Vue 3 的 3D 跳跃小游戏。控制机器人在随机生成的平台间往上跳跃，看你能跳到第几层——但底部的岩浆会持续追上来。
+一个基于 Three.js + Vue 3 的 3D 跳跃小游戏。选择你喜欢的角色，在随机生成的平台间往上跳跃，看你能跳到第几层——但底部的岩浆会持续追上来。
 
 > 在线试玩：https://jump-robot-v0d1pljk.edgeone.cool/
 
@@ -26,12 +26,13 @@
 
 - **Vue 3 + TypeScript 工程**：基于 Vite 的单文件组件（SFC）架构，引擎层与 UI 层解耦
 - **三维场景**：天空背景 + 雾效 + 方向光阴影，营造立体空间感
-- **GLTF 模型动画**：机器人内置 Idle / Walk / Run / Jump 动画，根据状态平滑过渡
+- **GLTF 模型动画**：角色模型内置 Idle / Walk / Run / Jump / Death 动画，根据状态平滑过渡；死亡时播放模型自带的死亡动画
 - **动态平台生成**：随玩家上升不断生成新平台，远离玩家的低层平台自动回收
 - **Minecraft 风格像素材质**：平台按高度分段（草 → 泥 → 石 → 高山裸岩 → 雪线），每段使用 canvas 程序化生成的 16×16 像素纹理（NearestFilter 硬边像素）
 - **视线遮挡处理**：相机与玩家之间的平台自动半透明化，避免视野被挡
 - **冲刺跳跃**：Shift 冲刺时跳跃，跳得更高更远，是冲层关键
-- **第一 / 第三人称切换**：按 `V` 键（PC）或点 👁 按钮（移动端）切换视角；第一人称可上下左右自由观察，机器人模型自动隐藏
+- **第一 / 第三人称切换**：按 `V` 键（PC）或点 👁 按钮（移动端）切换视角；第一人称可上下左右自由观察，角色模型自动隐藏
+- **多角色选择**：开始游戏后进入选人页面，3D 实时展示角色模型，PC 左右箭头/键盘切换，移动端左右滑动切换，点击"立即出发"正式进入游戏；内置 5 个可选角色（机器人 + 4 个人形），均包含完整的 walk/run/idle/jump 动画
 - **岩浆追击**：底部岩浆缓慢上升，碰到即死，迫使玩家持续向上（详见 [岩浆系统](#岩浆系统)）
 - **死亡菜单**：被岩浆烧死后弹出菜单，可选择重新开始或退出游戏
 - **背景音乐**：进入游戏自动播放，退出游戏自动暂停（循环播放）
@@ -119,7 +120,7 @@ npm run preview
 - **流动**：纹理 UV 基于时间与 cloud 噪声做双路偏移（T1 / T2），再通过 `color * (p*2) + (color² - 0.1)` 混合，通道溢出形成高温发光带
 - **红光预警**：岩浆点光源照亮附近平台与角色，岩浆逼近时视觉更紧张
 - **行为**：岩浆面以恒定速度向上推进，玩家脚底低于岩浆面时触发死亡
-- **死亡流程**：角色消失约 1 秒（被烧化）→ 弹出"你死了"菜单 → 玩家选择"重新开始"（回到起点、岩浆归位、保留最高层数）或"退出游戏"（回开始界面、暂停音乐）
+- **死亡流程**：播放角色自带的死亡动画，同时下沉被岩浆吞没（约 1 秒）→ 弹出"你死了"菜单 → 玩家选择"重新开始"（回到起点、岩浆归位、保留最高层数）或"退出游戏"（回开始界面、暂停音乐）
 
 实现位于 [src/game/LavaSystem.ts](file:///d:/work/test/jump-robot/src/game/LavaSystem.ts)。
 
@@ -170,7 +171,7 @@ npm run preview
 ## 项目结构
 
 ```
-jump-robot/
+lava-leap/
 ├── index.html                  # Vite 入口 HTML
 ├── package.json                # 依赖与脚本
 ├── vite.config.ts              # Vite 配置
@@ -179,7 +180,11 @@ jump-robot/
 ├── assets/                     # 游戏资源
 │   └── bg-music.mp4            # 背景音乐
 ├── models/                     # 角色模型
-│   ├── RobotExpressive.glb     # 默认使用的机器人模型
+│   ├── RobotExpressive.glb     # 机器人
+│   ├── Man.glb                 # 休闲男
+│   ├── Man in Long Sleeves.glb # 长袖男
+│   ├── Man in Suit.glb         # 西装男
+│   ├── Man-fjHyMd5Wxw.glb     # 运动男
 │   ├── Xbot.glb
 │   └── miku.glb
 ├── src/
@@ -190,6 +195,7 @@ jump-robot/
 │   ├── game/                   # 引擎层（纯 TS，无 Vue 依赖，可独立复用）
 │   │   ├── constants.ts        # 所有常量 + MC 调色板 + 第一人称参数
 │   │   ├── types.ts            # Platform / InputKeys / GamePhase / CameraMode 等类型
+│   │   ├── characters.ts       # 可选角色配置（模型URL / 缩放 / 动作列表）
 │   │   ├── textures.ts         # 像素纹理生成
 │   │   ├── PlatformSystem.ts   # 平台生成 / 管理 / 落地检测 / 视线遮挡
 │   │   ├── LavaSystem.ts       # 岩浆着色器 / 上升 / 死亡检测
@@ -202,12 +208,13 @@ jump-robot/
 │   │       ├── types.ts        # 平台类型与行为定义
 │   │       └── generators/     # 经典生成器 / 混合生成器（移动+消失平台）
 │   ├── composables/            # Vue 组合式函数
-│   │   ├── useGame.ts          # 主引擎：场景 / 模型 / 主循环 / 控制 API
+│   │   ├── useGame.ts          # 主引擎：场景 / 模型 / 主循环 / 控制 API / 选人流程
 │   │   ├── useI18n.ts          # 国际化（中英文切换 + localStorage 持久化）
 │   │   ├── useKeyboardInput.ts # 键盘 + 鼠标输入（PC）
 │   │   └── useTouchInput.ts    # 触控输入（移动端）
 │   └── components/             # UI 组件
-│       ├── StartOverlay.vue    # 开始界面
+│       ├── StartOverlay.vue    # 开始界面（模式选择）
+│       ├── CharacterSelect.vue # 角色选择页面（3D展示 + 左右切换）
 │       ├── Hud.vue             # 层数显示 + 操作提示
 │       ├── EscMenu.vue         # 暂停 / 死亡菜单
 │       ├── SettingsPanel.vue    # 设置面板
@@ -286,9 +293,9 @@ export const MC_PALETTE: PaletteSeg[] = [
 
 ---
 
-# Jump Robot (English)
+# Lava Leap (English)
 
-A 3D jumping mini-game built with Three.js + Vue 3. Control a robot to jump upward across randomly generated platforms and see how high you can climb — but the lava at the bottom keeps rising.
+A 3D jumping mini-game built with Three.js + Vue 3. Pick your favorite character and jump upward across randomly generated platforms to see how high you can climb — but the lava at the bottom keeps rising.
 
 > Play online: https://jump-robot-v0d1pljk.edgeone.cool/
 
@@ -314,12 +321,13 @@ A 3D jumping mini-game built with Three.js + Vue 3. Control a robot to jump upwa
 
 - **Vue 3 + TypeScript engineering**: Vite-based Single File Component (SFC) architecture, engine layer decoupled from UI layer
 - **3D scene**: Sky background + fog + directional light shadows create a sense of spatial depth
-- **GLTF model animation**: The robot has built-in Idle / Walk / Run / Jump animations with smooth state transitions
+- **GLTF model animation**: Character models have built-in Idle / Walk / Run / Jump / Death animations with smooth state transitions; death plays the model's native death animation
 - **Dynamic platform generation**: New platforms are continuously generated as the player climbs, and distant low-level platforms are automatically recycled
 - **Minecraft-style pixel textures**: Platforms are segmented by height (grass → dirt → stone → darkstone → snow), each segment uses a canvas-generated 16×16 pixel texture (NearestFilter for hard pixel edges)
 - **Line-of-sight occlusion**: Platforms between the camera and the player become semi-transparent to avoid blocking the view
 - **Dash jump**: Jumping while dashing with Shift makes you jump higher and farther, which is key to climbing layers
-- **First / Third person toggle**: Press `V` (PC) or tap the 👁 button (mobile) to switch camera views; first-person allows free look up/down/left/right, robot model auto-hides
+- **First / Third person toggle**: Press `V` (PC) or tap the 👁 button (mobile) to switch camera views; first-person allows free look up/down/left/right, character model auto-hides
+- **Multi-character selection**: After tapping start, enter a character select screen with real-time 3D model preview. PC uses arrow buttons/keys, mobile uses left/right swipe. Tap "Let's Go" to officially start. 5 playable characters (1 robot + 4 humans), each with full walk/run/idle/jump animations
 - **Lava chase**: Bottom lava slowly rises and kills on contact, forcing the player to keep climbing (see [Lava System](#lava-system))
 - **Death menu**: A menu pops up after being burned by lava, offering options to restart or quit the game
 - **Background music**: Automatically plays when entering the game, pauses when exiting (loops)
@@ -407,7 +415,7 @@ A slowly rising lava surface at the bottom — the main failure condition.
 - **Flow**: Texture UV is offset in dual paths (T1 / T2) based on time and cloud noise, then mixed via `color * (p*2) + (color² - 0.1)`, with channel overflow forming high-temperature glowing bands
 - **Red light warning**: The lava point light source illuminates nearby platforms and the character, making the visual more intense as the lava approaches
 - **Behavior**: The lava surface advances upward at a constant speed, triggering death when the player's feet drop below the lava surface
-- **Death process**: Character disappears for about 1 second (burned away) → "You Died" menu pops up → Player chooses "Restart" (return to start, reset lava, keep highest layer) or "Quit Game" (return to start screen, pause music)
+- **Death process**: Plays the character's native death animation while sinking into the lava (about 1 second) → "You Died" menu pops up → Player chooses "Restart" (return to start, reset lava, keep highest layer) or "Quit Game" (return to start screen, pause music)
 
 Implementation in [src/game/LavaSystem.ts](file:///d:/work/test/jump-robot/src/game/LavaSystem.ts).
 
@@ -458,7 +466,7 @@ Click "Settings" in the pause menu to open the settings panel. Currently support
 ## Project Structure
 
 ```
-jump-robot/
+lava-leap/
 ├── index.html                  # Vite entry HTML
 ├── package.json                # Dependencies and scripts
 ├── vite.config.ts              # Vite config
@@ -467,7 +475,11 @@ jump-robot/
 ├── assets/                     # Game assets
 │   └── bg-music.mp4            # Background music
 ├── models/                     # Character models
-│   ├── RobotExpressive.glb     # Default robot model
+│   ├── RobotExpressive.glb     # Robot
+│   ├── Man.glb                 # Casual man
+│   ├── Man in Long Sleeves.glb # Long-sleeve man
+│   ├── Man in Suit.glb         # Suit man
+│   ├── Man-fjHyMd5Wxw.glb     # Sporty man
 │   ├── Xbot.glb
 │   └── miku.glb
 ├── src/
@@ -478,6 +490,7 @@ jump-robot/
 │   ├── game/                   # Engine layer (pure TS, no Vue dependency, independently reusable)
 │   │   ├── constants.ts        # All constants + MC palette + first-person params
 │   │   ├── types.ts            # Platform / InputKeys / GamePhase / CameraMode types
+│   │   ├── characters.ts       # Playable character config (model URL / scale / action list)
 │   │   ├── textures.ts         # Pixel texture generation
 │   │   ├── PlatformSystem.ts   # Platform generation / management / landing detection / line-of-sight occlusion
 │   │   ├── LavaSystem.ts       # Lava shader / rising / death detection
@@ -490,12 +503,13 @@ jump-robot/
 │   │       ├── types.ts        # Platform type & behavior definitions
 │   │       └── generators/     # Classic generator / Mixed generator (moving + disappearing platforms)
 │   ├── composables/            # Vue composables
-│   │   ├── useGame.ts          # Main engine: scene / model / main loop / control API
+│   │   ├── useGame.ts          # Main engine: scene / model / main loop / control API / character select flow
 │   │   ├── useI18n.ts          # Internationalization (zh/en toggle + localStorage persistence)
 │   │   ├── useKeyboardInput.ts # Keyboard + mouse input (PC)
 │   │   └── useTouchInput.ts    # Touch input (mobile)
 │   └── components/             # UI components
-│       ├── StartOverlay.vue    # Start screen
+│       ├── StartOverlay.vue    # Start screen (mode selection)
+│       ├── CharacterSelect.vue # Character select screen (3D preview + left/right switch)
 │       ├── Hud.vue             # Layer display + controls hint
 │       ├── EscMenu.vue         # Pause / death menu
 │       ├── SettingsPanel.vue    # Settings panel

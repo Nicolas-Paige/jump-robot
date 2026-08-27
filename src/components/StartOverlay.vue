@@ -53,7 +53,7 @@ function onStart() {
         <button id="btnStartSettings" :title="tr('settings')" @click="emit('settings')">⚙</button>
 
         <div class="overlay-inner">
-            <h1>Jump Robot</h1>
+            <h1>Lava Leap</h1>
             <p class="hint-text" v-html="hintText.replace(/\n/g, '<br>')"></p>
 
             <!-- 模式选择 -->

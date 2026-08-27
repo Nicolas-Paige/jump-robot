@@ -59,7 +59,7 @@ const translations = {
 
 export type TranslationKey = keyof typeof translations;
 
-const STORAGE_KEY = 'jump-robot-language';
+const STORAGE_KEY = 'lava-leap-language';
 
 function detectInitialLanguage(): Language {
     if (typeof localStorage !== 'undefined') {

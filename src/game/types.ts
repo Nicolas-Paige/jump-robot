@@ -39,12 +39,13 @@ export interface InputKeys {
 
 // 游戏状态机
 export type GamePhase =
-    | 'idle'         // 开始界面
-    | 'playing'      // 游戏中
-    | 'paused'       // 暂停菜单
-    | 'settings'     // 设置面板
-    | 'dying'        // 死亡动画进行中
-    | 'dead';        // 死亡菜单
+    | 'idle'               // 开始界面
+    | 'character-select'   // 角色选择页面
+    | 'playing'            // 游戏中
+    | 'paused'             // 暂停菜单
+    | 'settings'           // 设置面板
+    | 'dying'              // 死亡动画进行中
+    | 'dead';              // 死亡菜单
 
 // 相机视角模式
 export type CameraMode = 'firstPerson' | 'thirdPerson';

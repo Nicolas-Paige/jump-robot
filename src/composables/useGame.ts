@@ -13,9 +13,7 @@ import { disposePixelTextures } from '../game/textures';
 import type { GamePhase, InputKeys, DeathMaterialRecord, CameraMode } from '../game/types';
 import type { GameMode } from '../game/modes/types';
 import { DEFAULT_MODE } from '../game/modes/registry';
-
-// 模型本地路径（Vite 会处理为 URL）
-import robotModelUrl from '../../models/RobotExpressive.glb';
+import { getCharacterById, DEFAULT_CHARACTER_ID, CHARACTERS, type Character } from '../game/characters';
 
 // 触控设备检测（模块级常量，避免重复计算）
 export const IS_TOUCH_DEVICE =
@@ -32,9 +30,10 @@ export function useGame(options: UseGameOptions) {
     const phase = ref<GamePhase>('idle');
     const currentLayer = ref(0);
     const bestLayer = ref(0);
-    const volume = ref(70);
+    const volume = ref(30);
     const loadingProgress = ref(0);
     const loadError = ref<string | null>(null);
+    const characterIndex = ref(0);  // 当前选中角色索引（响应式，给UI用）
 
     // ===== Three.js 对象（shallowRef 避免响应式包装） =====
     const scene = shallowRef<THREE.Scene | null>(null);
@@ -49,9 +48,13 @@ export function useGame(options: UseGameOptions) {
     let velY = 0;
     let isGrounded = true;
     let mixer: THREE.AnimationMixer | null = null;
-    let walkAction: any = null, runAction: any = null, idleAction: any = null, jumpAction: any = null;
+    let walkAction: any = null, runAction: any = null, idleAction: any = null, jumpAction: any = null, deathAction: any = null;
     let currentAnimation = 'idle';
     let modelLoaded = false;
+
+    // 当前选中的角色
+    let selectedCharacterId = DEFAULT_CHARACTER_ID;
+    let currentCharacterIndex = 0;
 
     // 死亡动画
     let deathModel: THREE.Object3D | null = null;
@@ -75,6 +78,8 @@ export function useGame(options: UseGameOptions) {
     let clock: THREE.Clock | null = null;
     let rafId = 0;
     let animationRunning = false;
+    // 选人阶段正面补光
+    let characterFillLight: THREE.DirectionalLight | null = null;
 
     // 对外暴露的 setter（给 input composable 用）
     const input = {
@@ -156,17 +161,30 @@ export function useGame(options: UseGameOptions) {
     }
 
     // ============== 2. 模型加载 ==============
-    function loadModel() {
+    function loadModel(character: Character) {
+        loadingProgress.value = 0;
+        // 切换角色时清理旧模型
+        const pg = playerGroup.value!;
+        if (pg.children.length > 0) {
+            while (pg.children.length > 0) {
+                pg.remove(pg.children[0]);
+            }
+        }
+        mixer = null;
+        walkAction = runAction = idleAction = jumpAction = deathAction = null;
+        deathModel = null;
+        deathMaterials = [];
+        modelLoaded = false;
+
         const loader = new GLTFLoader();
         loader.load(
-            robotModelUrl,
+            character.modelUrl,
             (gltf: any) => {
                 const model = gltf.scene;
-                model.scale.set(0.3, 0.3, 0.3);
+                model.scale.set(character.scale, character.scale, character.scale);
                 model.castShadow = true;
-                const pg = playerGroup.value!;
                 pg.add(model);
-                pg.visible = cameraMode.value === 'thirdPerson';
+                pg.visible = true;
 
                 mixer = new THREE.AnimationMixer(model);
                 const animations = gltf.animations;
@@ -175,16 +193,23 @@ export function useGame(options: UseGameOptions) {
                 const runAnim = find(/run|running/);
                 const idleAnim = find(/idle|standing/);
                 const jumpAnim = find(/jump|jumping/);
+                const deathAnim = find(/death|dying/);
 
                 walkAction = mixer.clipAction(walkAnim || animations[0]);
                 runAction = mixer.clipAction(runAnim || walkAnim || animations[0]);
                 idleAction = mixer.clipAction(idleAnim || animations[0]);
                 jumpAction = mixer.clipAction(jumpAnim || animations[0]);
+                deathAction = deathAnim ? mixer.clipAction(deathAnim) : null;
 
                 walkAction.setEffectiveWeight(1);
                 runAction.setEffectiveWeight(1);
                 idleAction.setEffectiveWeight(1);
                 jumpAction.setEffectiveWeight(1);
+                if (deathAction) {
+                    deathAction.setEffectiveWeight(1);
+                    deathAction.setLoop(THREE.LoopOnce, 1);
+                    deathAction.clampWhenFinished = true;
+                }
                 idleAction.play();
 
                 deathModel = model;
@@ -207,6 +232,7 @@ export function useGame(options: UseGameOptions) {
                 });
 
                 modelLoaded = true;
+                loadingProgress.value = 100;
                 onModelReady();
             },
             (progress: { loaded: number; total: number }) => {
@@ -223,6 +249,8 @@ export function useGame(options: UseGameOptions) {
 
     // ============== 3. 模型就绪 → 进入游戏 ==============
     function onModelReady() {
+        // 选人预览阶段：模型加载完不改变 phase，继续展示
+        if (phase.value === 'character-select') return;
         phase.value = 'playing';
         const bg = options.bgMusic.value;
         if (bg) {
@@ -246,7 +274,12 @@ export function useGame(options: UseGameOptions) {
     function onPlayerDeath() {
         deathTimer = DEATH_DURATION;
         deathStartY = playerGroup.value!.position.y;
+        // 淡出所有普通动作
         [walkAction, runAction, idleAction, jumpAction].forEach(a => { if (a) a.fadeOut(0.1); });
+        // 播放模型自带的死亡动画
+        if (deathAction) {
+            deathAction.reset().fadeIn(0.1).play();
+        }
         playerGroup.value!.visible = true;
     }
 
@@ -266,6 +299,20 @@ export function useGame(options: UseGameOptions) {
             renderer.value!.render(scene.value!, camera.value!);
             return;
         }
+
+        // 角色选择阶段：展示模型，相机固定正面，角色缓慢旋转
+        if (phase.value === 'character-select') {
+            if (mixer) mixer.update(delta);
+            const pg = playerGroup.value!;
+            // 角色缓慢自转展示
+            pg.rotation.y += delta * 0.5;
+            // 相机近距离正面，看全身
+            camera.value!.position.set(0, 1.5, 3.2);
+            camera.value!.lookAt(0, 0.9, 0);
+            renderer.value!.render(scene.value!, camera.value!);
+            return;
+        }
+
         // 暂停 / 设置 / 死亡菜单：只渲染不更新
         if (phase.value === 'paused' || phase.value === 'settings' || phase.value === 'dead') {
             renderer.value!.render(scene.value!, camera.value!);
@@ -279,38 +326,22 @@ export function useGame(options: UseGameOptions) {
             if (mixer) mixer.update(delta);
 
             const deathElapsed = DEATH_DURATION - deathTimer;
-            const deathHalf = DEATH_DURATION * 0.5;
-            const tNorm = Math.min(deathElapsed / deathHalf, 1.0);
+            const tNorm = Math.min(deathElapsed / DEATH_DURATION, 1.0);
 
-            deathMaterials.forEach(d => {
-                const r = d.origEmissiveR + (1.0 - d.origEmissiveR) * tNorm;
-                const g = d.origEmissiveG * (1.0 - tNorm);
-                const b = d.origEmissiveB * (1.0 - tNorm);
-                d.mat.emissive.setRGB(r, g, b);
-                d.mat.emissiveIntensity = d.origEmissiveI + 3.0 * tNorm;
-            });
-
+            // 下沉到岩浆中
             const sinkTarget = lavaSystem!.y - 0.3;
             playerGroup.value!.position.y = deathStartY + (sinkTarget - deathStartY) * tNorm;
 
-            const tiltX = Math.sin(deathElapsed * 5.0) * 0.15 * tNorm;
-            const tiltZ = Math.cos(deathElapsed * 4.0) * 0.10 * tNorm;
-            if (deathModel) {
-                deathModel.rotation.x = tiltX;
-                deathModel.rotation.z = tiltZ;
-            }
-
-            if (deathElapsed >= deathHalf && playerGroup.value!.visible) {
+            // 下沉过半后隐藏模型（被岩浆吞没）
+            if (deathElapsed >= DEATH_DURATION * 0.5 && playerGroup.value!.visible) {
                 playerGroup.value!.visible = false;
             }
 
             if (deathTimer <= 0) {
                 deathTimer = 0;
+                // 停止死亡动画，重置模型姿态
+                if (deathAction) deathAction.fadeOut(0);
                 if (deathModel) deathModel.rotation.set(0, 0, 0);
-                deathMaterials.forEach(d => {
-                    d.mat.emissive.setRGB(d.origEmissiveR, d.origEmissiveG, d.origEmissiveB);
-                    d.mat.emissiveIntensity = d.origEmissiveI;
-                });
                 openDeathMenu();
             }
             renderer.value!.render(scene.value!, camera.value!);
@@ -487,8 +518,112 @@ export function useGame(options: UseGameOptions) {
     }
 
     // ============== 7. 控制 API（给 UI 调用） ==============
-    function startGame(mode: GameMode = DEFAULT_MODE) {
+
+    // 进入角色选择页面（点开始游戏后调用）
+    function enterCharacterSelect(mode: GameMode = DEFAULT_MODE) {
         currentMode.value = mode;
+        phase.value = 'character-select';
+
+        // 清理平台和岩浆（选人阶段不显示）
+        if (platformSystem) platformSystem.clear();
+        if (lavaSystem) {
+            lavaSystem.setEnabled(false);
+            lavaSystem.reset(mode.lava.initialY, mode.lava.riseSpeed);
+        }
+
+        // 添加选人阶段正面补光
+        if (!characterFillLight && scene.value) {
+            characterFillLight = new THREE.DirectionalLight(0xffffff, 0.9);
+            characterFillLight.position.set(0, 2.5, 5);
+            scene.value.add(characterFillLight);
+        }
+
+        // 重置玩家位置和朝向
+        const pg = playerGroup.value!;
+        pg.position.set(0, 0, 0);
+        pg.rotation.set(0, 0, 0);
+        velY = 0;
+        isGrounded = true;
+        currentGroundedPlatform = null;
+        currentLayer.value = 0;
+        bestLayer.value = 0;
+        deathTimer = 0;
+        deathPending = false;
+
+        // 加载当前选中的角色
+        const char = CHARACTERS[currentCharacterIndex] ?? CHARACTERS[0];
+        selectedCharacterId = char.id;
+        characterIndex.value = currentCharacterIndex;
+        loadModel(char);
+    }
+
+    // 左右切换角色（-1 上一个，+1 下一个）
+    function switchCharacter(direction: number) {
+        if (phase.value !== 'character-select') return;
+        const len = CHARACTERS.length;
+        currentCharacterIndex = (currentCharacterIndex + direction + len) % len;
+        characterIndex.value = currentCharacterIndex;
+        const char = CHARACTERS[currentCharacterIndex];
+        selectedCharacterId = char.id;
+        loadModel(char);
+    }
+
+    // 确认选择，正式进入游戏
+    function confirmCharacter() {
+        if (phase.value !== 'character-select') return;
+        const mode = currentMode.value;
+
+        // 移除选人阶段补光
+        if (characterFillLight && scene.value) {
+            scene.value.remove(characterFillLight);
+            characterFillLight = null;
+        }
+
+        // 生成平台初始层
+        if (platformSystem) {
+            platformSystem.clear();
+            platformSystem.setGenerator(mode.createGenerator(), mode);
+            platformSystem.initInitialLayers();
+        }
+        // 启用岩浆
+        if (lavaSystem) {
+            lavaSystem.reset(mode.lava.initialY, mode.lava.riseSpeed);
+            lavaSystem.setEnabled(mode.lava.enabled);
+        }
+
+        // 重置玩家状态
+        const pg = playerGroup.value!;
+        pg.position.set(0, 0, 0);
+        pg.rotation.set(0, 0, 0);
+        velY = 0;
+        isGrounded = true;
+        yaw = 0;
+        currentGroundedPlatform = null;
+        currentLayer.value = 0;
+        deathTimer = 0;
+        deathPending = false;
+        pg.visible = cameraMode.value === 'thirdPerson';
+
+        // 重置动画到 idle
+        if (idleAction) {
+            [walkAction, runAction, idleAction, jumpAction, deathAction].forEach(a => { if (a) a.fadeOut(0); });
+            idleAction.reset().fadeIn(0.15).play();
+            currentAnimation = 'idle';
+        }
+
+        phase.value = 'playing';
+        // 播放背景音乐
+        const bg = options.bgMusic.value;
+        if (bg) {
+            bg.currentTime = 0;
+            bg.volume = volume.value / 100;
+            bg.play().catch(err => console.warn('背景音乐播放失败：', err));
+        }
+    }
+
+    function startGame(mode: GameMode = DEFAULT_MODE, characterId: string = DEFAULT_CHARACTER_ID) {
+        currentMode.value = mode;
+        selectedCharacterId = characterId;
         loadingProgress.value = 0;
         loadError.value = null;
 
@@ -512,8 +647,10 @@ export function useGame(options: UseGameOptions) {
             modelLoaded = false;
             deathModel = null;
             deathMaterials = [];
+            mixer = null;
+            walkAction = runAction = idleAction = jumpAction = deathAction = null;
         }
-        loadModel();
+        loadModel(getCharacterById(characterId));
     }
 
     function pauseGame() {
@@ -556,13 +693,9 @@ export function useGame(options: UseGameOptions) {
         pg.visible = modelLoaded && cameraMode.value === 'thirdPerson';
 
         if (deathModel) deathModel.rotation.set(0, 0, 0);
-        deathMaterials.forEach(d => {
-            d.mat.emissive.setRGB(d.origEmissiveR, d.origEmissiveG, d.origEmissiveB);
-            d.mat.emissiveIntensity = d.origEmissiveI;
-        });
 
         if (idleAction) {
-            [walkAction, runAction, idleAction, jumpAction].forEach(a => { if (a) a.fadeOut(0); });
+            [walkAction, runAction, idleAction, jumpAction, deathAction].forEach(a => { if (a) a.fadeOut(0); });
             idleAction.reset().fadeIn(0.15).play();
             currentAnimation = 'idle';
         }
@@ -571,6 +704,11 @@ export function useGame(options: UseGameOptions) {
 
     function quitGame() {
         restartGame();
+        // 移除选人阶段补光
+        if (characterFillLight && scene.value) {
+            scene.value.remove(characterFillLight);
+            characterFillLight = null;
+        }
         phase.value = 'idle';
         playerGroup.value!.visible = false;
         if (document.pointerLockElement) document.exitPointerLock();
@@ -604,11 +742,13 @@ export function useGame(options: UseGameOptions) {
     return {
         // 状态
         phase, currentLayer, bestLayer, volume,
-        loadingProgress, loadError, currentMode, cameraMode,
+        loadingProgress, loadError, currentMode, cameraMode, characterIndex,
         // 引擎控制
         initScene, startGame, pauseGame, resumeGame,
         openSettings, closeSettings,
         restartGame, quitGame, setVolume, onResize,
+        // 选人流程
+        enterCharacterSelect, switchCharacter, confirmCharacter,
         // 输入桥接
         input,
         // 死亡动画进行中（给 input composable 判断用）
