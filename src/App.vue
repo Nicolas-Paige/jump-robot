@@ -155,6 +155,7 @@ const showGameUI = computed(() => !['idle', 'character-select'].includes(game.ph
         <TouchControls
             v-if="IS_TOUCH_DEVICE"
             :game-active="showGameUI"
+            :settings-open="game.phase.value === 'settings'"
             :handlers="touchHandlers"
             @pause="togglePause"
         />

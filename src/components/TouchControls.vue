@@ -5,6 +5,8 @@ import { useI18n } from '../composables/useI18n';
 const props = defineProps<{
     // 是否进入游戏（控制摇杆/按钮显示，旋转提示不受此影响）
     gameActive: boolean;
+    // 设置面板是否打开（打开时隐藏触摸层，避免拦截滑块事件）
+    settingsOpen: boolean;
     handlers: {
         onJoystickStart: (e: TouchEvent, centerX: number, centerY: number) => void;
         onJoystickMove: (e: TouchEvent) => { dx: number; dy: number };
@@ -78,8 +80,8 @@ function joyLayerEnd(e: TouchEvent) {
         <p>{{ tr('rotateHintDesc') }}</p>
     </div>
 
-    <!-- 触控控件（横屏 + 游戏中时显示） -->
-    <div v-if="!isPortrait && gameActive" id="touchControls">
+    <!-- 触控控件（横屏 + 游戏中 + 设置面板未打开时显示） -->
+    <div v-if="!isPortrait && gameActive && !settingsOpen" id="touchControls">
         <!-- 左半屏：动态摇杆触摸层（任意位置按下生成摇杆） -->
         <div id="joystickLayer"
             @touchstart="joyLayerStart"

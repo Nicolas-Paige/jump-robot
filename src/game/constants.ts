@@ -16,8 +16,8 @@ export const GRAVITY = -25;
 export const JUMP_POWER = 13;
 
 // 相机跟随
-export const CAM_DIST = 9;
-export const CAM_HEIGHT = 4;
+export const CAM_DIST = 6;
+export const CAM_HEIGHT = 3;
 export const CAM_SMOOTH = 0.12;
 
 // 第一人称
