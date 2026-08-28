@@ -11,7 +11,7 @@ import SettingsPanel from './components/SettingsPanel.vue';
 import TouchControls from './components/TouchControls.vue';
 import type { GamePhase } from './game/types';
 import type { GameMode } from './game/modes/types';
-import bgMusicUrl from '../assets/bg-music.mp4';
+import bgMusicUrl from '../assets/bg-music-8bit.wav';
 
 // canvas + audio 引用（都在顶层，不随 v-if 销毁）
 const canvasRef = ref<HTMLCanvasElement | null>(null);

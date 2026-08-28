@@ -270,6 +270,70 @@ export function useGame(options: UseGameOptions) {
         currentAnimation = target;
     }
 
+    // ============== 4.5 音效系统（Web Audio API 程序化生成 8-bit 音效）==============
+    let audioCtx: AudioContext | null = null;
+
+    function getAudioCtx(): AudioContext | null {
+        if (typeof window === 'undefined') return null;
+        if (!audioCtx) {
+            const Ctx = window.AudioContext || (window as any).webkitAudioContext;
+            if (!Ctx) return null;
+            audioCtx = new Ctx();
+        }
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        return audioCtx;
+    }
+
+    function playJumpSound() {
+        const ctx = getAudioCtx();
+        if (!ctx) return;
+        const vol = Math.max(0.001, volume.value / 100 * 0.22);
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(380, ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.1);
+        gain.gain.setValueAtTime(vol, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.14);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.14);
+    }
+
+    function playDeathSound() {
+        const ctx = getAudioCtx();
+        if (!ctx) return;
+        const vol = Math.max(0.001, volume.value / 100 * 0.35);
+        // 下降锯齿波
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(480, ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(70, ctx.currentTime + 0.5);
+        gain.gain.setValueAtTime(vol, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.55);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.55);
+        // 白噪声爆发
+        const bufferSize = Math.floor(ctx.sampleRate * 0.35);
+        const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+            data[i] = (Math.random() * 2 - 1) * (1 - i / bufferSize);
+        }
+        const noise = ctx.createBufferSource();
+        noise.buffer = buffer;
+        const noiseGain = ctx.createGain();
+        noiseGain.gain.setValueAtTime(vol * 0.6, ctx.currentTime);
+        noiseGain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
+        noise.connect(noiseGain);
+        noiseGain.connect(ctx.destination);
+        noise.start();
+    }
+
     // ============== 5. 死亡 ==============
     function onPlayerDeath() {
         deathTimer = DEATH_DURATION;
@@ -281,6 +345,7 @@ export function useGame(options: UseGameOptions) {
             deathAction.reset().fadeIn(0.1).play();
         }
         playerGroup.value!.visible = true;
+        playDeathSound();
     }
 
     function openDeathMenu() {
@@ -385,6 +450,7 @@ export function useGame(options: UseGameOptions) {
             velY = mode.jumpPower * mult;
             isGrounded = false;
             switchAnimation('jump');
+            playJumpSound();
         }
 
         // 重力 + 落地
