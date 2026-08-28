@@ -40,6 +40,8 @@ export function useGame(options: UseGameOptions) {
     const camera = shallowRef<THREE.PerspectiveCamera | null>(null);
     const renderer = shallowRef<THREE.WebGLRenderer | null>(null);
     const playerGroup = shallowRef<THREE.Group | null>(null);
+    let skyDome: THREE.Mesh | null = null;
+    let skyUniforms: { [key: string]: THREE.IUniform } | null = null;
 
     // ===== 游戏内部状态（普通变量，不响应式） =====
     const keys: InputKeys = { w: false, a: false, s: false, d: false, space: false, shift: false };
@@ -101,6 +103,172 @@ export function useGame(options: UseGameOptions) {
     // 死亡动画进行中（给 input composable 判断用）
     function isDying() { return deathTimer > 0; }
 
+    // ============== 0.5 体积云天空 ==============
+    function createPerlinNoiseTexture(): THREE.CanvasTexture {
+        const size = 256;
+        const canvas = document.createElement('canvas');
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d')!;
+        const imgData = ctx.createImageData(size, size);
+        const hash = (x: number, y: number) => {
+            const n = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453;
+            return n - Math.floor(n);
+        };
+        const smooth = (x: number, y: number) => {
+            const ix = Math.floor(x), iy = Math.floor(y);
+            const fx = x - ix, fy = y - iy;
+            const a = hash(ix, iy), b = hash(ix + 1, iy);
+            const c = hash(ix, iy + 1), d = hash(ix + 1, iy + 1);
+            const ux = fx * fx * (3 - 2 * fx), uy = fy * fy * (3 - 2 * fy);
+            return a * (1 - ux) * (1 - uy) + b * ux * (1 - uy) + c * (1 - ux) * uy + d * ux * uy;
+        };
+        const fbm = (x: number, y: number) => {
+            let v = 0, amp = 0.5, freq = 1;
+            for (let i = 0; i < 5; i++) {
+                v += amp * smooth(x * freq, y * freq);
+                amp *= 0.5; freq *= 2;
+            }
+            return v;
+        };
+        for (let y = 0; y < size; y++) {
+            for (let x = 0; x < size; x++) {
+                const v = Math.floor(fbm(x / 18, y / 18) * 255);
+                const idx = (y * size + x) * 4;
+                imgData.data[idx] = imgData.data[idx + 1] = imgData.data[idx + 2] = v;
+                imgData.data[idx + 3] = 255;
+            }
+        }
+        ctx.putImageData(imgData, 0, 0);
+        const tex = new THREE.CanvasTexture(canvas);
+        tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+        return tex;
+    }
+
+    const skyVertexShader = `
+        varying vec3 vWorldPosition;
+        void main() {
+            vec4 wp = modelMatrix * vec4(position, 1.0);
+            vWorldPosition = wp.xyz;
+            gl_Position = projectionMatrix * viewMatrix * wp;
+        }
+    `;
+
+    const skyFragmentShader = `
+        uniform float uTime;
+        uniform vec3 uSunDirection;
+        uniform sampler2D t_PerlinNoise;
+        uniform float uCloudCoverage;
+        uniform float uCloudHeight;
+        uniform float uCloudThickness;
+        uniform float uCloudAbsorption;
+        uniform float uWindSpeedX;
+        uniform float uWindSpeedZ;
+        uniform float uMaxCloudDistance;
+        varying vec3 vWorldPosition;
+
+        #define TWO_PI 6.28318530718
+        #define STEPS 20
+        #define LIGHT_STEPS 4
+
+        mat3 m = mat3(0.00, 0.80, 0.60, -0.80, 0.36, -0.48, -0.60, -0.48, 0.64);
+
+        vec3 Get_Sky_Color(vec3 rayDir) {
+            float sunAmount = max(0.0, dot(rayDir, uSunDirection));
+            float skyGradient = pow(max(0.0, rayDir.y), 0.5);
+            vec3 skyColor = mix(vec3(0.25, 0.50, 0.92), vec3(0.95, 0.97, 1.0), pow(sunAmount, 10.0));
+            vec3 horizonColor = vec3(0.80, 0.90, 1.0);
+            skyColor = mix(horizonColor, skyColor, skyGradient);
+            if (sunAmount > 0.998) skyColor += vec3(1.0, 0.98, 0.9) * pow(sunAmount, 2000.0) * 4.0;
+            return skyColor;
+        }
+
+        float noise3D(vec3 p) {
+            vec2 uv = p.xz * 0.015 + p.y * 0.008;
+            return texture2D(t_PerlinNoise, uv).x;
+        }
+
+        float fbm(vec3 p) {
+            float t = 0.51749673 * noise3D(p); p = m * p * 2.76434;
+            t += 0.25584929 * noise3D(p); p = m * p * 2.76434;
+            t += 0.12527603 * noise3D(p); p = m * p * 2.76434;
+            t += 0.06255931 * noise3D(p);
+            return t;
+        }
+
+        float cloud_density(vec3 pos, vec3 offset) {
+            vec3 p = pos * 0.025 + offset;
+            float dens = fbm(p);
+            float cov = 1.0 - uCloudCoverage;
+            dens *= smoothstep(cov, cov + 0.06, dens);
+            float height = pos.y - uCloudHeight;
+            float heightAtten = 1.0 - clamp(height / uCloudThickness, 0.0, 1.0);
+            heightAtten = heightAtten * heightAtten;
+            dens *= heightAtten;
+            return clamp(dens, 0.0, 1.0);
+        }
+
+        float cloud_light(vec3 pos, vec3 dir_step, vec3 offset) {
+            float T = 1.0;
+            for (int i = 0; i < LIGHT_STEPS; i++) {
+                float dens = cloud_density(pos, offset);
+                T *= exp(-uCloudAbsorption * dens);
+                pos += dir_step;
+            }
+            return T;
+        }
+
+        vec4 render_clouds(vec3 rayOrigin, vec3 rayDirection) {
+            float t = (uCloudHeight - rayOrigin.y) / rayDirection.y;
+            if (t < 0.0 || t > uMaxCloudDistance) return vec4(0.0);
+            float distanceFade = 1.0 - smoothstep(uMaxCloudDistance * 0.5, uMaxCloudDistance, t);
+            vec3 startPos = rayOrigin + rayDirection * t;
+            vec3 windOffset = vec3(uTime * -uWindSpeedX, 0.0, uTime * -uWindSpeedZ);
+            float march_step = uCloudThickness / float(STEPS);
+            vec3 dir_step = rayDirection * march_step;
+            vec3 light_step = uSunDirection * 6.0;
+            float T = 1.0;
+            vec3 C = vec3(0.0);
+            float alpha = 0.0;
+            vec3 pos = startPos;
+            for (int i = 0; i < STEPS; i++) {
+                if (pos.y < uCloudHeight || pos.y > uCloudHeight + uCloudThickness) { pos += dir_step; continue; }
+                float h = float(i) / float(STEPS);
+                float dens = cloud_density(pos, windOffset);
+                if (dens > 0.01) {
+                    float T_i = exp(-uCloudAbsorption * dens * march_step);
+                    T *= T_i;
+                    float cl = cloud_light(pos, light_step, windOffset);
+                    float lightFactor = exp(h) / 1.8;
+                    float sunContrib = pow(max(0.0, dot(rayDirection, uSunDirection)), 2.0);
+                    vec3 edgeColor = mix(vec3(1.0), vec3(1.0, 0.98, 0.92), sunContrib);
+                    vec3 cloudColor = mix(vec3(0.62, 0.70, 0.82), edgeColor, cl * lightFactor);
+                    C += T * cloudColor * dens * march_step * 1.6;
+                    alpha += (1.0 - T_i) * (1.0 - alpha);
+                }
+                pos += dir_step;
+                if (T < 0.01) break;
+            }
+            vec3 sunColor = vec3(1.0, 0.98, 0.95);
+            vec3 skyColor = vec3(0.85, 0.90, 0.97);
+            C *= mix(skyColor, sunColor, 0.5 * pow(max(0.0, dot(rayDirection, uSunDirection)), 2.0));
+            alpha *= distanceFade; C *= distanceFade;
+            return vec4(C, alpha);
+        }
+
+        void main() {
+            vec3 rayDirection = normalize(vWorldPosition - cameraPosition);
+            vec3 skyColor = Get_Sky_Color(rayDirection);
+            vec4 clouds = vec4(0.0);
+            if (rayDirection.y > -0.05) clouds = render_clouds(cameraPosition, rayDirection);
+            vec3 finalColor = mix(skyColor, clouds.rgb, clouds.a);
+            float t = pow(1.0 - max(0.0, rayDirection.y), 5.0);
+            finalColor = mix(finalColor, vec3(0.82, 0.90, 1.0), 0.35 * t);
+            finalColor = finalColor * 1.4 / (finalColor * 1.4 + vec3(1.0));
+            gl_FragColor = vec4(finalColor, 1.0);
+        }
+    `;
+
     // ============== 1. 初始化场景 ==============
     function initScene() {
         if (!options.canvas.value) return;
@@ -109,6 +277,35 @@ export function useGame(options: UseGameOptions) {
         s.background = new THREE.Color(0x87CEEB);
         s.fog = new THREE.Fog(0x87CEEB, 40, 120);
         scene.value = s;
+
+        // 体积云天空球
+        const sunDir = new THREE.Vector3();
+        sunDir.setFromSphericalCoords(1, THREE.MathUtils.degToRad(50), THREE.MathUtils.degToRad(160));
+        skyUniforms = {
+            uTime: { value: 0 },
+            uSunDirection: { value: sunDir },
+            t_PerlinNoise: { value: createPerlinNoiseTexture() },
+            uCloudCoverage: { value: 0.5 },
+            uCloudHeight: { value: 130 },
+            uCloudThickness: { value: 70 },
+            uCloudAbsorption: { value: 0.35 },
+            uWindSpeedX: { value: 2.5 },
+            uWindSpeedZ: { value: 1.2 },
+            uMaxCloudDistance: { value: 600 },
+        };
+        const skyMat = new THREE.ShaderMaterial({
+            vertexShader: skyVertexShader,
+            fragmentShader: skyFragmentShader,
+            uniforms: skyUniforms,
+            side: THREE.BackSide,
+            depthWrite: false,
+            fog: false,
+        });
+        const dome = new THREE.Mesh(new THREE.SphereGeometry(800, 48, 32), skyMat);
+        dome.visible = false;
+        dome.renderOrder = -1;
+        s.add(dome);
+        skyDome = dome;
 
         const cam = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
         cam.position.set(0, 5, 10);
@@ -252,6 +449,7 @@ export function useGame(options: UseGameOptions) {
         // 选人预览阶段：模型加载完不改变 phase，继续展示
         if (phase.value === 'character-select') return;
         phase.value = 'playing';
+        if (skyDome) skyDome.visible = true;
         const bg = options.bgMusic.value;
         if (bg) {
             bg.currentTime = 0;
@@ -575,6 +773,12 @@ export function useGame(options: UseGameOptions) {
             camera.value!.lookAt(pg.position.x, pg.position.y + 1, pg.position.z);
         }
 
+        // 天空球跟随相机 + 更新时间
+        if (skyDome && skyDome.visible) {
+            skyDome.position.copy(camera.value!.position);
+            if (skyUniforms) skyUniforms.uTime.value += delta;
+        }
+
         // 视线遮挡
         const camPos = camera.value!.position.clone();
         const playerPos = new THREE.Vector3(pg.position.x, pg.position.y + 1, pg.position.z);
@@ -589,6 +793,7 @@ export function useGame(options: UseGameOptions) {
     function enterCharacterSelect(mode: GameMode = DEFAULT_MODE) {
         currentMode.value = mode;
         phase.value = 'character-select';
+        if (skyDome) skyDome.visible = false;
 
         // 清理平台和岩浆（选人阶段不显示）
         if (platformSystem) platformSystem.clear();
@@ -678,6 +883,7 @@ export function useGame(options: UseGameOptions) {
         }
 
         phase.value = 'playing';
+        if (skyDome) skyDome.visible = true;
         // 播放背景音乐
         const bg = options.bgMusic.value;
         if (bg) {
@@ -726,6 +932,7 @@ export function useGame(options: UseGameOptions) {
     function resumeGame() {
         if (deathPending) return;
         phase.value = 'playing';
+        if (skyDome) skyDome.visible = true;
     }
     // 进入设置前的状态，关闭时回到那里（paused → 暂停菜单，idle → 开始界面）
     let previousPhase: GamePhase = 'paused';
@@ -766,6 +973,7 @@ export function useGame(options: UseGameOptions) {
             currentAnimation = 'idle';
         }
         phase.value = 'playing';
+        if (skyDome) skyDome.visible = true;
     }
 
     function quitGame() {
@@ -776,6 +984,7 @@ export function useGame(options: UseGameOptions) {
             characterFillLight = null;
         }
         phase.value = 'idle';
+        if (skyDome) skyDome.visible = false;
         playerGroup.value!.visible = false;
         if (document.pointerLockElement) document.exitPointerLock();
         options.bgMusic.value?.pause();
