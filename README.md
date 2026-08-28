@@ -2,7 +2,7 @@
 
 一个基于 Three.js + Vue 3 的 3D 跳跃小游戏。选择你喜欢的角色，在随机生成的平台间往上跳跃，看你能跳到第几层——但底部的岩浆会持续追上来。
 
-> 在线试玩：https://lava-leap-y6pcjtww.edgeone.cool/
+> 在线试玩：https://game.andio.top/
 
 ---
 
@@ -297,7 +297,7 @@ export const MC_PALETTE: PaletteSeg[] = [
 
 A 3D jumping mini-game built with Three.js + Vue 3. Pick your favorite character and jump upward across randomly generated platforms to see how high you can climb — but the lava at the bottom keeps rising.
 
-> Play online: https://lava-leap-y6pcjtww.edgeone.cool/
+> Play online: https://game.andio.top/
 
 ---
 
