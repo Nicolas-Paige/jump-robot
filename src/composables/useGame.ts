@@ -197,7 +197,8 @@ export function useGame(options: UseGameOptions) {
         }
 
         float cloud_density(vec3 pos, vec3 offset) {
-            vec3 p = pos * 0.025 + offset;
+            // 用相对相机的坐标采样噪声，云锚定在天空上，相机移动时不会抖动滑动
+            vec3 p = (pos - cameraPosition) * 0.025 + offset;
             float dens = fbm(p);
             float cov = 1.0 - uCloudCoverage;
             dens *= smoothstep(cov, cov + 0.06, dens);
@@ -776,7 +777,12 @@ export function useGame(options: UseGameOptions) {
         // 天空球跟随相机 + 更新时间
         if (skyDome && skyDome.visible) {
             skyDome.position.copy(camera.value!.position);
-            if (skyUniforms) skyUniforms.uTime.value += delta;
+            if (skyUniforms) {
+                skyUniforms.uTime.value += delta;
+                // 云层跟随相机：始终在相机上方固定相对高度，避免跳高后跳出云层
+                // 基准高度 = 相机 y + 130（与原世界高度 130 一致，相机贴地时视觉不变）
+                skyUniforms.uCloudHeight.value = camera.value!.position.y + 130;
+            }
         }
 
         // 视线遮挡
