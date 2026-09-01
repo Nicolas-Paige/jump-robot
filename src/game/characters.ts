@@ -1,11 +1,12 @@
 // ============== 可选角色配置 ==============
 // 仅包含拥有 walk / run / idle / jump 四种必需动画的模型
 
-import robotModelUrl from '../../models/RobotExpressive.glb';
-import manModelUrl from '../../models/Man.glb';
-import manSleevesModelUrl from '../../models/Man in Long Sleeves.glb';
-import manSuitModelUrl from '../../models/Man in Suit.glb';
-import manOtherModelUrl from '../../models/Man-fjHyMd5Wxw.glb';
+// 模型已迁移至 public/models，通过运行时绝对路径加载
+const robotModelUrl = '/models/Role/RobotExpressive.glb';
+const manModelUrl = '/models/Role/Man.glb';
+const manSleevesModelUrl = '/models/Role/ManInLongSleeves.glb';
+const manSuitModelUrl = '/models/Role/ManInSuit.glb';
+const manOtherModelUrl = '/models/Role/Man-fjHyMd5Wxw.glb';
 
 // 动作信息
 export interface ActionInfo {
