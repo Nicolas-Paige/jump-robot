@@ -38,6 +38,8 @@ export class PlatformSystem {
     private generator: PlatformGenerator | null = null;
     private modeConfig: GameModeConfig | null = null;
     private readonly shards: Shard[] = [];
+    private onPlatformRemoved: ((platform: Platform) => void) | null = null;
+    private onLayerGenerated: ((layer: number) => void) | null = null;
 
     constructor(scene: THREE.Scene) {
         this.scene = scene;
@@ -48,6 +50,16 @@ export class PlatformSystem {
     setGenerator(gen: PlatformGenerator, config: GameModeConfig): void {
         this.generator = gen;
         this.modeConfig = config;
+    }
+
+    // 设置平台移除回调（供外部系统清理关联对象）
+    setOnPlatformRemoved(cb: (platform: Platform) => void): void {
+        this.onPlatformRemoved = cb;
+    }
+
+    // 设置新层生成回调（供外部系统在新层上放置内容）
+    setOnLayerGenerated(cb: (layer: number) => void): void {
+        this.onLayerGenerated = cb;
     }
 
     // 创建单个平台（从 Placement 数据）
@@ -224,6 +236,7 @@ export class PlatformSystem {
         p.material.dispose();
         const idx = this.platforms.indexOf(p);
         if (idx >= 0) this.platforms.splice(idx, 1);
+        this.onPlatformRemoved?.(p);
     }
 
     // 破碎动画：把平台拆成 8 个小方块向四周飞散
@@ -321,6 +334,7 @@ export class PlatformSystem {
         while (this.highestGeneratedLayer < playerLayerApprox + 12) {
             this.highestGeneratedLayer++;
             this.generateLayer(this.highestGeneratedLayer);
+            this.onLayerGenerated?.(this.highestGeneratedLayer);
         }
 
         const minKeepLayer = playerLayerApprox - 10;

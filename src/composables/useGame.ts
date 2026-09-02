@@ -9,6 +9,7 @@ import {
 } from '../game/constants';
 import { PlatformSystem } from '../game/PlatformSystem';
 import { LavaSystem } from '../game/LavaSystem';
+import { MonsterSystem } from '../game/MonsterSystem';
 import { disposePixelTextures } from '../game/textures';
 import type { GamePhase, InputKeys, DeathMaterialRecord, CameraMode } from '../game/types';
 import type { GameMode } from '../game/modes/types';
@@ -62,6 +63,7 @@ export function useGame(options: UseGameOptions) {
     let deathModel: THREE.Object3D | null = null;
     let deathMaterials: DeathMaterialRecord[] = [];
     let deathStartY = 0;
+    let deathSinkTarget = 0;  // 死亡下沉目标高度
     let deathTimer = 0;
     let deathPending = false;
 
@@ -77,6 +79,7 @@ export function useGame(options: UseGameOptions) {
     // 系统
     let platformSystem: PlatformSystem | null = null;
     let lavaSystem: LavaSystem | null = null;
+    let monsterSystem: MonsterSystem | null = null;
     let clock: THREE.Clock | null = null;
     let rafId = 0;
     let animationRunning = false;
@@ -350,6 +353,20 @@ export function useGame(options: UseGameOptions) {
         // 平台系统（仅创建实例，generator 在 startGame 里设置）
         platformSystem = new PlatformSystem(s);
 
+        // 怪物系统
+        monsterSystem = new MonsterSystem(s);
+        monsterSystem.load();
+
+        // 平台移除时清理关联的 Dragon
+        platformSystem.setOnPlatformRemoved((p) => {
+            monsterSystem?.removeByPlatform(p);
+        });
+
+        // 新层生成时尝试放置 Dragon
+        platformSystem.setOnLayerGenerated((layer) => {
+            monsterSystem?.trySpawnOnLayer(layer, platformSystem!.platforms);
+        });
+
         // 岩浆（始终创建，enabled 由 mode 控制）
         lavaSystem = new LavaSystem(s, s.background as THREE.Color);
 
@@ -534,9 +551,14 @@ export function useGame(options: UseGameOptions) {
     }
 
     // ============== 5. 死亡 ==============
-    function onPlayerDeath() {
+    function onPlayerDeath(sinkToLava: boolean = true) {
+        if (deathTimer > 0 || deathPending) return;  // 避免重复触发
         deathTimer = DEATH_DURATION;
         deathStartY = playerGroup.value!.position.y;
+        // 岩浆死亡：沉入岩浆面；怪物死亡：原地倒下不下沉
+        deathSinkTarget = sinkToLava ? lavaSystem!.y - 0.3 : deathStartY;
+        velY = 0;  // 停止重力下坠
+        isGrounded = false;
         // 淡出所有普通动作
         [walkAction, runAction, idleAction, jumpAction].forEach(a => { if (a) a.fadeOut(0.1); });
         // 播放模型自带的死亡动画
@@ -592,9 +614,8 @@ export function useGame(options: UseGameOptions) {
             const deathElapsed = DEATH_DURATION - deathTimer;
             const tNorm = Math.min(deathElapsed / DEATH_DURATION, 1.0);
 
-            // 下沉到岩浆中
-            const sinkTarget = lavaSystem!.y - 0.3;
-            playerGroup.value!.position.y = deathStartY + (sinkTarget - deathStartY) * tNorm;
+            // 下沉到目标高度（岩浆面 / 平台内）
+            playerGroup.value!.position.y = deathStartY + (deathSinkTarget - deathStartY) * tNorm;
 
             // 下沉过半后隐藏模型（被岩浆吞没）
             if (deathElapsed >= DEATH_DURATION * 0.5 && playerGroup.value!.visible) {
@@ -741,11 +762,18 @@ export function useGame(options: UseGameOptions) {
 
         // 平台更新（移动 / 消失倒计时）
         platformSystem!.update(delta);
+        // 怪物更新（Dragon 动画 + 跟随平台）
+        monsterSystem!.update(delta);
         // 平台动态管理
         platformSystem!.manage(pg.position.y);
         // 岩浆
         lavaSystem!.update(delta);
         if (lavaSystem!.checkDeath(pg.position.y)) onPlayerDeath();
+
+        // 怪物碰撞检测（玩家碰到 Dino 触发死亡，原地倒下不沉入岩浆）
+        if (!deathPending && deathTimer <= 0 && monsterSystem!.checkCollision(pg.position.x, pg.position.y + 0.8, pg.position.z, 1.2)) {
+            onPlayerDeath(false);
+        }
 
         // 模式每帧 hook
         mode.onUpdate?.(delta, {
@@ -803,6 +831,7 @@ export function useGame(options: UseGameOptions) {
 
         // 清理平台和岩浆（选人阶段不显示）
         if (platformSystem) platformSystem.clear();
+        monsterSystem?.clear();
         if (lavaSystem) {
             lavaSystem.setEnabled(false);
             lavaSystem.reset(mode.lava.initialY, mode.lava.riseSpeed);
@@ -861,6 +890,10 @@ export function useGame(options: UseGameOptions) {
             platformSystem.clear();
             platformSystem.setGenerator(mode.createGenerator(), mode);
             platformSystem.initInitialLayers();
+            // 初始层也随机生成 Dragon（跳过第 0 层）
+            for (let l = 1; l <= 5; l++) {
+                monsterSystem?.trySpawnOnLayer(l, platformSystem.platforms);
+            }
         }
         // 启用岩浆
         if (lavaSystem) {
@@ -908,8 +941,13 @@ export function useGame(options: UseGameOptions) {
         // 应用模式配置到引擎子系统
         if (platformSystem) {
             platformSystem.clear();
+            monsterSystem?.clear();
             platformSystem.setGenerator(mode.createGenerator(), mode);
             platformSystem.initInitialLayers();
+            // 初始层也随机生成 Dragon（跳过第 0 层）
+            for (let l = 1; l <= 5; l++) {
+                monsterSystem?.trySpawnOnLayer(l, platformSystem.platforms);
+            }
         }
         if (lavaSystem) {
             lavaSystem.reset(mode.lava.initialY, mode.lava.riseSpeed);
@@ -961,6 +999,7 @@ export function useGame(options: UseGameOptions) {
         currentGroundedPlatform = null;
 
         platformSystem!.clear();
+        monsterSystem?.clear();
         platformSystem!.setGenerator(mode.createGenerator(), mode);
         platformSystem!.initInitialLayers();
 
@@ -1013,6 +1052,7 @@ export function useGame(options: UseGameOptions) {
         animationRunning = false;
         cancelAnimationFrame(rafId);
         platformSystem?.dispose();
+        monsterSystem?.dispose();
         lavaSystem?.dispose();
         disposePixelTextures();
         renderer.value?.dispose();

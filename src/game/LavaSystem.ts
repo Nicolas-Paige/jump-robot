@@ -9,10 +9,12 @@ import {
 
 const LAVA_TEXTURE_CANDIDATES = {
     cloud: [
+        '/textures/lava/cloud.png',
         'https://threejs.org/examples/textures/lava/cloud.png',
         'https://raw.githubusercontent.com/mrdoob/three.js/r160/examples/textures/lava/cloud.png',
     ],
     tile: [
+        '/textures/lava/lavatile.jpg',
         'https://threejs.org/examples/textures/lava/lavatile.jpg',
         'https://raw.githubusercontent.com/mrdoob/three.js/r160/examples/textures/lava/lavatile.jpg',
     ],
