@@ -9,10 +9,20 @@ interface SpawnedDino {
     group: THREE.Group;
     platform: Platform;
     mixer: THREE.AnimationMixer;
+    // 巡逻参数：沿平台边缘绕圈
+    patrolHalf: number;     // 巡逻半宽（平台半宽 - 边距），0 表示不巡逻
+    patrolT: number;        // 沿边缘周长走过的距离
+    patrolDir: 1 | -1;
+    patrolSpeed: number;
+    // 巡逻动画（有走路动画时用）
+    walkAction: THREE.AnimationAction | null;
+    idleAction: THREE.AnimationAction | null;
 }
 
 const DINO_SPAWN_CHANCE = 0.3;
 const DINO_MODEL_URL = '/models/Monsters/Dino.glb';
+const DINO_PATROL_SPEED = 1.0;   // 巡逻速度（单位/秒）
+const DINO_PATROL_MARGIN = 1;  // 距平台边缘的保底距离（不贴边走）
 
 export class MonsterSystem {
     private readonly scene: THREE.Scene;
@@ -86,11 +96,19 @@ export class MonsterSystem {
 
         // 动画（先创建 mixer 并 posing 一帧，让骨骼处于实际渲染姿态）
         const mixer = new THREE.AnimationMixer(model);
+        let walkAction: THREE.AnimationAction | null = null;
+        let idleAction: THREE.AnimationAction | null = null;
         if (this.gltfAnimations.length > 0) {
             const idleAnim = this.gltfAnimations.find((a: any) => /idle/i.test(a.name)) ?? this.gltfAnimations[0];
-            const action = mixer.clipAction(idleAnim);
-            action.setEffectiveWeight(1);
-            action.play();
+            const walkAnim = this.gltfAnimations.find((a: any) => /walk|run/i.test(a.name));
+            idleAction = mixer.clipAction(idleAnim);
+            idleAction.setEffectiveWeight(1);
+            idleAction.play();
+            if (walkAnim) {
+                walkAction = mixer.clipAction(walkAnim);
+                walkAction.setEffectiveWeight(0);
+                walkAction.play();
+            }
             mixer.update(0);
         }
 
@@ -115,12 +133,33 @@ export class MonsterSystem {
         model.position.z -= center.z;
         model.position.y -= box.min.y;
 
-        container.position.set(platform.x, platform.topY, platform.z);
         container.rotation.y = Math.random() * Math.PI * 2;
         container.visible = true;
 
-        this.dinos.push({ group: container, platform, mixer });
-        console.log(`[MonsterSystem] 第 ${layer} 层 Dino，box: min.y=${box.min.y.toFixed(2)}, 高度=${(box.max.y - box.min.y).toFixed(2)}，位置: (${platform.x.toFixed(1)}, ${platform.topY.toFixed(1)}, ${platform.z.toFixed(1)})`);
+        // 巡逻参数：沿平台边缘绕圈（初始位置随机），平台太小则原地待机
+        const half = platform.size / 2 - DINO_PATROL_MARGIN;
+        const canPatrol = half > 0.3;
+        const perimeter = canPatrol ? 8 * half : 0;
+        const startT = canPatrol ? Math.random() * perimeter : 0;
+        const startPos = MonsterSystem._perimeterPos(half, startT);
+        container.position.set(
+            platform.x + startPos.x,
+            platform.topY,
+            platform.z + startPos.z,
+        );
+
+        this.dinos.push({
+            group: container,
+            platform,
+            mixer,
+            patrolHalf: canPatrol ? half : 0,
+            patrolT: startT,
+            patrolDir: Math.random() < 0.5 ? 1 : -1,
+            patrolSpeed: DINO_PATROL_SPEED * (0.8 + Math.random() * 0.4),
+            walkAction,
+            idleAction,
+        });
+        console.log(`[MonsterSystem] 第 ${layer} 层 Dino，box: min.y=${box.min.y.toFixed(2)}, 高度=${(box.max.y - box.min.y).toFixed(2)}，巡逻: ${canPatrol ? `边缘绕圈 ±${half.toFixed(1)}` : '关闭'}`);
     }
 
     /** 移除与指定平台关联的 Dino */
@@ -134,14 +173,56 @@ export class MonsterSystem {
         }
     }
 
-    /** 每帧更新：Dino 跟随平台移动 + 动画 */
+    /** 每帧更新：Dino 跟随平台移动 + 沿平台边缘绕圈巡逻 + 动画切换 */
     update(delta: number): void {
         for (const d of this.dinos) {
             d.mixer.update(delta);
-            d.group.position.x = d.platform.x;
-            d.group.position.z = d.platform.z;
+
+            if (d.patrolHalf > 0) {
+                // 沿平台边缘绕圈：perimeter = 8 * half，走完一圈回到起点
+                const per = 8 * d.patrolHalf;
+                d.patrolT = (d.patrolT + d.patrolDir * d.patrolSpeed * delta + per) % per;
+
+                const pos = MonsterSystem._perimeterPos(d.patrolHalf, d.patrolT);
+                const aheadT = (d.patrolT + d.patrolDir * 0.5 + per) % per;
+                const ahead = MonsterSystem._perimeterPos(d.patrolHalf, aheadT);
+
+                // 朝向移动方向（模型默认面朝 +z）
+                const targetYaw = Math.atan2(ahead.x - pos.x, ahead.z - pos.z);
+                let diff = targetYaw - d.group.rotation.y;
+                while (diff > Math.PI) diff -= Math.PI * 2;
+                while (diff < -Math.PI) diff += Math.PI * 2;
+                d.group.rotation.y += diff * 0.15;
+
+                // 走路动画
+                if (d.walkAction && d.idleAction) {
+                    d.walkAction.setEffectiveWeight(1);
+                    d.idleAction.setEffectiveWeight(0);
+                }
+
+                d.group.position.x = d.platform.x + pos.x;
+                d.group.position.z = d.platform.z + pos.z;
+            } else {
+                // 平台太小不巡逻：原地待机
+                if (d.walkAction && d.idleAction) {
+                    d.walkAction.setEffectiveWeight(0);
+                    d.idleAction.setEffectiveWeight(1);
+                }
+                d.group.position.x = d.platform.x;
+                d.group.position.z = d.platform.z;
+            }
             d.group.position.y = d.platform.topY;
         }
+    }
+
+    /** 沿正方形边缘（半宽 half）按弧长 t 取位置，方向：前边 → 右边 → 后边 → 左边 */
+    private static _perimeterPos(half: number, t: number): { x: number; z: number } {
+        const side = 2 * half;
+        const s = ((t % (4 * side)) + 4 * side) % (4 * side);
+        if (s < side) return { x: -half + s, z: -half };
+        if (s < 2 * side) return { x: half, z: -half + (s - side) };
+        if (s < 3 * side) return { x: half - (s - 2 * side), z: half };
+        return { x: -half, z: half - (s - 3 * side) };
     }
 
     /** 碰撞检测：玩家是否碰到任何 Dino */
