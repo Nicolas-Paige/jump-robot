@@ -762,8 +762,8 @@ export function useGame(options: UseGameOptions) {
 
         // 平台更新（移动 / 消失倒计时）
         platformSystem!.update(delta);
-        // 怪物更新（Dragon 动画 + 跟随平台）
-        monsterSystem!.update(delta);
+        // 怪物更新（巡逻 / 追击 + 动画切换）
+        monsterSystem!.update(delta, pg.position.x, pg.position.y, pg.position.z, currentLayer.value);
         // 平台动态管理
         platformSystem!.manage(pg.position.y);
         // 岩浆

@@ -14,6 +14,8 @@ interface SpawnedDino {
     patrolT: number;        // 沿边缘周长走过的距离
     patrolDir: 1 | -1;
     patrolSpeed: number;
+    // 追击状态
+    state: 'patrol' | 'chase';
     // 巡逻动画（有走路动画时用）
     walkAction: THREE.AnimationAction | null;
     idleAction: THREE.AnimationAction | null;
@@ -21,8 +23,10 @@ interface SpawnedDino {
 
 const DINO_SPAWN_CHANCE = 0.3;
 const DINO_MODEL_URL = '/models/Monsters/Dino.glb';
-const DINO_PATROL_SPEED = 1.0;   // 巡逻速度（单位/秒）
+const DINO_PATROL_SPEED = 0.4;   // 巡逻速度（单位/秒）—— 缓慢悠闲
 const DINO_PATROL_MARGIN = 1;  // 距平台边缘的保底距离（不贴边走）
+const DINO_DETECT_RANGE = 15; // 同层时发现玩家的距离
+const DINO_CHASE_SPEED = 1.5; // 追击速度（单位/秒）
 
 export class MonsterSystem {
     private readonly scene: THREE.Scene;
@@ -156,6 +160,7 @@ export class MonsterSystem {
             patrolT: startT,
             patrolDir: Math.random() < 0.5 ? 1 : -1,
             patrolSpeed: DINO_PATROL_SPEED * (0.8 + Math.random() * 0.4),
+            state: 'patrol',
             walkAction,
             idleAction,
         });
@@ -173,13 +178,45 @@ export class MonsterSystem {
         }
     }
 
-    /** 每帧更新：Dino 跟随平台移动 + 沿平台边缘绕圈巡逻 + 动画切换 */
-    update(delta: number): void {
+    /** 每帧更新：巡逻 / 追击 + 动画切换 */
+    update(delta: number, playerX: number, playerY: number, playerZ: number, playerLayer: number): void {
         for (const d of this.dinos) {
             d.mixer.update(delta);
 
-            if (d.patrolHalf > 0) {
-                // 沿平台边缘绕圈：perimeter = 8 * half，走完一圈回到起点
+            // 同层距离检测 → 切换状态
+            const dx = playerX - d.group.position.x;
+            const dz = playerZ - d.group.position.z;
+            const distXZ = Math.sqrt(dx * dx + dz * dz);
+            const sameLayer = playerLayer === d.platform.layer;
+
+            if (d.state === 'patrol' && sameLayer && distXZ < DINO_DETECT_RANGE) {
+                d.state = 'chase';
+            } else if (d.state === 'chase' && (!sameLayer || distXZ > DINO_DETECT_RANGE * 1.4)) {
+                d.state = 'patrol';
+            }
+
+            if (d.state === 'chase') {
+                // 追击：朝玩家方向直线移动
+                const len = distXZ || 1;
+                const moveX = (dx / len) * DINO_CHASE_SPEED * delta;
+                const moveZ = (dz / len) * DINO_CHASE_SPEED * delta;
+                d.group.position.x += moveX;
+                d.group.position.z += moveZ;
+
+                // 朝向玩家
+                const targetYaw = Math.atan2(dx, dz);
+                let diff = targetYaw - d.group.rotation.y;
+                while (diff > Math.PI) diff -= Math.PI * 2;
+                while (diff < -Math.PI) diff += Math.PI * 2;
+                d.group.rotation.y += diff * 0.2;
+
+                // 走路动画
+                if (d.walkAction && d.idleAction) {
+                    d.walkAction.setEffectiveWeight(1);
+                    d.idleAction.setEffectiveWeight(0);
+                }
+            } else if (d.patrolHalf > 0) {
+                // 巡逻：沿平台边缘绕圈（缓慢）
                 const per = 8 * d.patrolHalf;
                 d.patrolT = (d.patrolT + d.patrolDir * d.patrolSpeed * delta + per) % per;
 
