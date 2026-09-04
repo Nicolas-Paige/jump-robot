@@ -7,6 +7,10 @@ const manModelUrl = '/models/Role/Man.glb';
 const manSleevesModelUrl = '/models/Role/ManInLongSleeves.glb';
 const manSuitModelUrl = '/models/Role/ManInSuit.glb';
 const manOtherModelUrl = '/models/Role/Man-fjHyMd5Wxw.glb';
+const womanModelUrl = '/models/Role/Woman.glb';
+const womanCasualModelUrl = '/models/Role/WomanCasual.glb';
+const womanDressModelUrl = '/models/Role/WomanInDress.glb';
+const womanTankTopModelUrl = '/models/Role/WomanInTankTop.glb';
 
 // 动作信息
 export interface ActionInfo {
@@ -130,6 +134,58 @@ export const CHARACTERS: Character[] = [
         type: 'human',
         typeLabel: '人形',
         typeColor: '#e2a04a',
+        actions: buildActions(HUMAN_EXTRA_ACTIONS),
+        featured: ['swordslash', 'clapping', 'runningjump'],
+    },
+    {
+        id: 'woman',
+        name: '女性角色',
+        icon: '👩',
+        desc: '女性基础模型，动画丰富',
+        modelUrl: womanModelUrl,
+        scale: 0.38,
+        type: 'human',
+        typeLabel: '人形',
+        typeColor: '#d4649a',
+        actions: buildActions(HUMAN_EXTRA_ACTIONS),
+        featured: ['swordslash', 'clapping', 'runningjump'],
+    },
+    {
+        id: 'woman-casual',
+        name: '休闲女',
+        icon: '👚',
+        desc: '休闲装扮女性角色',
+        modelUrl: womanCasualModelUrl,
+        scale: 0.38,
+        type: 'human',
+        typeLabel: '人形',
+        typeColor: '#d4649a',
+        actions: buildActions(HUMAN_EXTRA_ACTIONS),
+        featured: ['swordslash', 'clapping', 'runningjump'],
+    },
+    {
+        id: 'woman-dress',
+        name: '裙装女',
+        icon: '👗',
+        desc: '优雅裙装女性角色',
+        modelUrl: womanDressModelUrl,
+        scale: 0.38,
+        type: 'human',
+        typeLabel: '人形',
+        typeColor: '#d4649a',
+        actions: buildActions(HUMAN_EXTRA_ACTIONS),
+        featured: ['swordslash', 'clapping', 'runningjump'],
+    },
+    {
+        id: 'woman-tanktop',
+        name: '背心女',
+        icon: '🎽',
+        desc: '运动背心女性角色',
+        modelUrl: womanTankTopModelUrl,
+        scale: 0.38,
+        type: 'human',
+        typeLabel: '人形',
+        typeColor: '#d4649a',
         actions: buildActions(HUMAN_EXTRA_ACTIONS),
         featured: ['swordslash', 'clapping', 'runningjump'],
     },
