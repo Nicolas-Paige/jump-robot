@@ -14,8 +14,11 @@ interface SpawnedDino {
     patrolT: number;        // 沿边缘周长走过的距离
     patrolDir: 1 | -1;
     patrolSpeed: number;
-    // 追击状态
-    state: 'patrol' | 'chase';
+    // 状态：巡逻 / 追击 / 返回巡逻路线
+    state: 'patrol' | 'chase' | 'returning';
+    // 返回目标点（世界坐标）
+    returnTargetX: number;
+    returnTargetZ: number;
     // 巡逻动画（有走路动画时用）
     walkAction: THREE.AnimationAction | null;
     idleAction: THREE.AnimationAction | null;
@@ -25,8 +28,9 @@ const DINO_SPAWN_CHANCE = 0.3;
 const DINO_MODEL_URL = '/models/Monsters/Dino.glb';
 const DINO_PATROL_SPEED = 0.4;   // 巡逻速度（单位/秒）—— 缓慢悠闲
 const DINO_PATROL_MARGIN = 1;  // 距平台边缘的保底距离（不贴边走）
-const DINO_DETECT_RANGE = 15; // 同层时发现玩家的距离
+const DINO_DETECT_RANGE = 20; // 同层时发现玩家的距离（覆盖大平台）
 const DINO_CHASE_SPEED = 1.5; // 追击速度（单位/秒）
+const DINO_RETURN_SPEED = 0.6; // 返回巡逻路线速度（单位/秒，略快于巡逻）
 
 export class MonsterSystem {
     private readonly scene: THREE.Scene;
@@ -161,6 +165,8 @@ export class MonsterSystem {
             patrolDir: Math.random() < 0.5 ? 1 : -1,
             patrolSpeed: DINO_PATROL_SPEED * (0.8 + Math.random() * 0.4),
             state: 'patrol',
+            returnTargetX: 0,
+            returnTargetZ: 0,
             walkAction,
             idleAction,
         });
@@ -189,19 +195,39 @@ export class MonsterSystem {
             const distXZ = Math.sqrt(dx * dx + dz * dz);
             const sameLayer = playerLayer === d.platform.layer;
 
-            if (d.state === 'patrol' && sameLayer && distXZ < DINO_DETECT_RANGE) {
+            if ((d.state === 'patrol' || d.state === 'returning') && sameLayer && distXZ < DINO_DETECT_RANGE) {
                 d.state = 'chase';
             } else if (d.state === 'chase' && (!sameLayer || distXZ > DINO_DETECT_RANGE * 1.4)) {
-                d.state = 'patrol';
+                // 追击结束 → 进入返回状态，目标是巡逻路径上最近的点
+                if (d.patrolHalf > 0) {
+                    const rx = d.group.position.x - d.platform.x;
+                    const rz = d.group.position.z - d.platform.z;
+                    d.patrolT = MonsterSystem._nearestT(d.patrolHalf, rx, rz);
+                    const target = MonsterSystem._perimeterPos(d.patrolHalf, d.patrolT);
+                    d.returnTargetX = d.platform.x + target.x;
+                    d.returnTargetZ = d.platform.z + target.z;
+                    d.state = 'returning';
+                } else {
+                    d.state = 'patrol';
+                }
             }
 
             if (d.state === 'chase') {
-                // 追击：朝玩家方向直线移动
+                // 追击：朝玩家方向直线移动，但不离开所在平台
                 const len = distXZ || 1;
-                const moveX = (dx / len) * DINO_CHASE_SPEED * delta;
-                const moveZ = (dz / len) * DINO_CHASE_SPEED * delta;
-                d.group.position.x += moveX;
-                d.group.position.z += moveZ;
+                let newX = d.group.position.x + (dx / len) * DINO_CHASE_SPEED * delta;
+                let newZ = d.group.position.z + (dz / len) * DINO_CHASE_SPEED * delta;
+
+                // 平台边界约束（留 margin 防止走到边缘掉下去）
+                const half = d.platform.size / 2 - DINO_PATROL_MARGIN;
+                const minX = d.platform.x - half;
+                const maxX = d.platform.x + half;
+                const minZ = d.platform.z - half;
+                const maxZ = d.platform.z + half;
+                newX = Math.max(minX, Math.min(maxX, newX));
+                newZ = Math.max(minZ, Math.min(maxZ, newZ));
+                d.group.position.x = newX;
+                d.group.position.z = newZ;
 
                 // 朝向玩家
                 const targetYaw = Math.atan2(dx, dz);
@@ -214,6 +240,33 @@ export class MonsterSystem {
                 if (d.walkAction && d.idleAction) {
                     d.walkAction.setEffectiveWeight(1);
                     d.idleAction.setEffectiveWeight(0);
+                }
+            } else if (d.state === 'returning') {
+                // 缓慢走回巡逻路线目标点
+                const rdx = d.returnTargetX - d.group.position.x;
+                const rdz = d.returnTargetZ - d.group.position.z;
+                const rDist = Math.sqrt(rdx * rdx + rdz * rdz);
+
+                if (rDist < 0.3) {
+                    // 到达目标点，恢复巡逻
+                    d.state = 'patrol';
+                } else {
+                    const rLen = rDist || 1;
+                    d.group.position.x += (rdx / rLen) * DINO_RETURN_SPEED * delta;
+                    d.group.position.z += (rdz / rLen) * DINO_RETURN_SPEED * delta;
+
+                    // 朝向移动方向
+                    const targetYaw = Math.atan2(rdx, rdz);
+                    let diff = targetYaw - d.group.rotation.y;
+                    while (diff > Math.PI) diff -= Math.PI * 2;
+                    while (diff < -Math.PI) diff += Math.PI * 2;
+                    d.group.rotation.y += diff * 0.15;
+
+                    // 走路动画
+                    if (d.walkAction && d.idleAction) {
+                        d.walkAction.setEffectiveWeight(1);
+                        d.idleAction.setEffectiveWeight(0);
+                    }
                 }
             } else if (d.patrolHalf > 0) {
                 // 巡逻：沿平台边缘绕圈（缓慢）
@@ -260,6 +313,34 @@ export class MonsterSystem {
         if (s < 2 * side) return { x: half, z: -half + (s - side) };
         if (s < 3 * side) return { x: half - (s - 2 * side), z: half };
         return { x: -half, z: half - (s - 3 * side) };
+    }
+
+    /** 把怪物当前位置投影到巡逻正方形边缘，返回最近的弧长 t */
+    private static _nearestT(half: number, rx: number, rz: number): number {
+        const side = 2 * half;
+        const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+        let best = Infinity;
+        let bestT = 0;
+
+        // 四条边各段弧长区间
+        const edges: { lo: number; cx: number; cz: number; clampX: boolean }[] = [
+            { lo: 0,          cx: 0,            cz: -half, clampX: true  },
+            { lo: side,       cx: half,         cz: 0,     clampX: false },
+            { lo: 2 * side,   cx: 0,            cz: half,  clampX: true  },
+            { lo: 3 * side,   cx: -half,        cz: 0,     clampX: false },
+        ];
+        for (const e of edges) {
+            const proj = e.clampX ? clamp(rx, -half, half) : half;
+            const projZ = e.clampX ? (e.cz as number) : clamp(rz, -half, half);
+            const dx = rx - (e.clampX ? proj : e.cx);
+            const dz = rz - (e.clampX ? e.cz : projZ);
+            const d2 = dx * dx + dz * dz;
+            if (d2 < best) {
+                best = d2;
+                bestT = e.lo + (e.clampX ? (proj + half) : (projZ + half));
+            }
+        }
+        return bestT;
     }
 
     /** 碰撞检测：玩家是否碰到任何 Dino */

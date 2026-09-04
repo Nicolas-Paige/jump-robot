@@ -29,7 +29,8 @@ export interface UseGameOptions {
 export function useGame(options: UseGameOptions) {
     // ===== 响应式 UI 状态 =====
     const phase = ref<GamePhase>('idle');
-    const currentLayer = ref(0);
+    const currentLayer = ref(0);    // 最高到达层（只增不减，用于进度 UI）
+    const playerCurrentLayer = ref(0); // 玩法实际所在层（怪物追击用）
     const bestLayer = ref(0);
     const volume = ref(30);
     const loadingProgress = ref(0);
@@ -686,6 +687,7 @@ export function useGame(options: UseGameOptions) {
                 velY = 0;
                 isGrounded = true;
                 currentGroundedPlatform = landed;
+                playerCurrentLayer.value = landed.layer;  // 始终跟踪实际所在层
                 if (landed.layer > currentLayer.value) {
                     currentLayer.value = landed.layer;
                     if (landed.layer > bestLayer.value) bestLayer.value = landed.layer;
@@ -758,12 +760,13 @@ export function useGame(options: UseGameOptions) {
             velY = 0;
             isGrounded = true;
             currentLayer.value = 0;
+            playerCurrentLayer.value = 0;
         }
 
         // 平台更新（移动 / 消失倒计时）
         platformSystem!.update(delta);
         // 怪物更新（巡逻 / 追击 + 动画切换）
-        monsterSystem!.update(delta, pg.position.x, pg.position.y, pg.position.z, currentLayer.value);
+        monsterSystem!.update(delta, pg.position.x, pg.position.y, pg.position.z, playerCurrentLayer.value);
         // 平台动态管理
         platformSystem!.manage(pg.position.y);
         // 岩浆
@@ -852,6 +855,7 @@ export function useGame(options: UseGameOptions) {
         isGrounded = true;
         currentGroundedPlatform = null;
         currentLayer.value = 0;
+        playerCurrentLayer.value = 0;
         bestLayer.value = 0;
         deathTimer = 0;
         deathPending = false;
@@ -910,6 +914,7 @@ export function useGame(options: UseGameOptions) {
         yaw = 0;
         currentGroundedPlatform = null;
         currentLayer.value = 0;
+        playerCurrentLayer.value = 0;
         deathTimer = 0;
         deathPending = false;
         pg.visible = cameraMode.value === 'thirdPerson';
@@ -1004,6 +1009,7 @@ export function useGame(options: UseGameOptions) {
         platformSystem!.initInitialLayers();
 
         currentLayer.value = 0;
+        playerCurrentLayer.value = 0;
         lavaSystem!.reset(mode.lava.initialY, mode.lava.riseSpeed);
         lavaSystem!.setEnabled(mode.lava.enabled);
         deathTimer = 0;
